@@ -1,5 +1,5 @@
 import { advancePhaseFromTimeout, buildInitialRoomState } from "@/lib/game/engine";
-import type { BuildInitialRoomStateInput, RoomState } from "@/lib/game/types";
+import type { BuildInitialRoomStateInput, RoomState, SeatState } from "@/lib/game/types";
 import { RoomBroadcast } from "@/lib/server/room-broadcast";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -11,6 +11,14 @@ export type RoomSnapshotPhase = "waiting" | RoomState["phase"];
 export interface RoomSnapshot extends Omit<RoomState, "phase"> {
   code: string;
   phase: RoomSnapshotPhase;
+}
+
+export type ClientSeatState = Omit<SeatState, "role"> & {
+  role?: SeatState["role"];
+};
+
+export interface ClientRoomSnapshot extends Omit<RoomSnapshot, "seats"> {
+  seats: ClientSeatState[];
 }
 
 export type CreateRoomInput = Omit<BuildInitialRoomStateInput, "hostSeatId">;
@@ -29,6 +37,27 @@ export class RoomStoreError extends Error {
 
 function cloneRoomSnapshot(room: RoomSnapshot) {
   return structuredClone(room);
+}
+
+export function toClientRoomSnapshot(room: RoomSnapshot): ClientRoomSnapshot {
+  const revealRoles = room.phase === "finished" && room.result !== null;
+
+  return {
+    ...cloneRoomSnapshot(room),
+    seats: room.seats.map((seat) => {
+      if (revealRoles) {
+        return { ...seat };
+      }
+
+      return {
+        id: seat.id,
+        status: seat.status,
+        color: seat.color,
+        connected: seat.connected,
+        isHost: seat.isHost,
+      };
+    }),
+  };
 }
 
 function ensureHostSeatIsHuman(room: RoomState) {

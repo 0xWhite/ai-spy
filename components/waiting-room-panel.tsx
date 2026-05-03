@@ -4,7 +4,7 @@ import { SeatBadge } from "@/components/seat-badge";
 type WaitingRoomPanelProps = {
   code: string;
   seats: SeatState[];
-  selfSeatId: string;
+  selfSeatId: string | null;
   onStart?: () => Promise<void> | void;
   isStarting?: boolean;
 };

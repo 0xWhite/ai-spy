@@ -1,4 +1,4 @@
-import type { RoomSnapshot } from "@/lib/server/room-store";
+import type { ClientRoomSnapshot } from "@/lib/server/room-store";
 import { ChatMessage } from "@/components/chat-message";
 import { CountdownChip } from "@/components/countdown-chip";
 import { MessageComposer } from "@/components/message-composer";
@@ -10,8 +10,8 @@ import { WaitingRoomPanel } from "@/components/waiting-room-panel";
 import { formatPhaseLabel } from "@/lib/utils/format";
 
 type RoomShellProps = {
-  room: RoomSnapshot;
-  selfSeatId: string;
+  room: ClientRoomSnapshot;
+  selfSeatId: string | null;
   onStart?: () => Promise<void> | void;
   onSendMessage?: (text: string) => Promise<void> | void;
   onVote?: (targetSeatId: string) => Promise<void> | void;
@@ -38,7 +38,7 @@ export function RoomShell({
     );
   }
 
-  if (room.phase === "finished") {
+  if (room.phase === "finished" && room.result) {
     return (
       <ResultsPanel
         eliminatedSeatIds={room.eliminatedSeatIds}
@@ -84,7 +84,7 @@ export function RoomShell({
             <div className="rounded-lg bg-slate-50 px-3 py-2">
               当前席位
               <div className="font-medium text-slate-950">
-                {selfSeat ? <SeatBadge seat={selfSeat} /> : selfSeatId}
+                {selfSeat ? <SeatBadge seat={selfSeat} /> : "未绑定席位"}
               </div>
             </div>
           </div>
@@ -138,8 +138,8 @@ export function RoomShell({
                 disabled={!onVote}
                 onVote={onVote}
                 seats={room.seats}
-                selectedSeatId={room.votes[selfSeatId]}
-                selfSeatId={selfSeatId}
+                selectedSeatId={selfSeatId ? room.votes[selfSeatId] : undefined}
+                selfSeatId={selfSeatId ?? ""}
                 tieSeatIds={room.phase === "tiebreak_voting" ? room.tieSeatIds : []}
               />
             ) : (

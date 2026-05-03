@@ -1,5 +1,5 @@
 import { castRoomVoteAction, RoomActionError } from "@/lib/server/room-actions";
-import { RoomStoreError } from "@/lib/server/room-store";
+import { RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +49,12 @@ export async function POST(
     const body = await readVoteBody(request);
 
     return Response.json(
-      castRoomVoteAction(code, {
-        voterSeatId: body.voterSeatId,
-        targetSeatId: body.targetSeatId,
-      }),
+      toClientRoomSnapshot(
+        castRoomVoteAction(code, {
+          voterSeatId: body.voterSeatId,
+          targetSeatId: body.targetSeatId,
+        }),
+      ),
     );
   } catch (error) {
     if (error instanceof InvalidRequestBodyError) {

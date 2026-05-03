@@ -1,5 +1,9 @@
 import { startRoomAction } from "@/lib/server/room-actions";
-import { InMemoryRoomStore, RoomStoreError } from "@/lib/server/room-store";
+import {
+  InMemoryRoomStore,
+  RoomStoreError,
+  toClientRoomSnapshot,
+} from "@/lib/server/room-store";
 
 describe("room store", () => {
   afterEach(() => {
@@ -203,5 +207,37 @@ describe("room store", () => {
     ]);
     expect(settledRoom?.phaseEndsAt).toBe(Date.now() + 50_000);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it("redacts hidden seat roles before the game result exists", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    const clientRoom = toClientRoomSnapshot(room);
+
+    expect(clientRoom.seats[0]).not.toHaveProperty("role");
+  });
+
+  it("keeps seat roles in the client snapshot after the game finishes", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.saveRoom({
+      ...store.createRoom({
+        totalSeats: 7,
+        aiCount: 1,
+        roundOneSeconds: 300,
+        roundSeconds: 180,
+      }),
+      phase: "finished",
+      result: { winner: "human" },
+    });
+
+    const clientRoom = toClientRoomSnapshot(room);
+
+    expect(clientRoom.seats[0]).toHaveProperty("role");
   });
 });

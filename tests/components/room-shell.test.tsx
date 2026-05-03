@@ -43,6 +43,18 @@ function buildDiscussionRoom(): RoomSnapshot {
   };
 }
 
+function buildFinishedRoom(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
+  return {
+    code: "ABCDEF",
+    ...buildInitialRoomState({
+      hostSeatId: "seat-1",
+    }),
+    phase: "finished",
+    result: { winner: "human" },
+    ...overrides,
+  };
+}
+
 describe("RoomShell", () => {
   it("renders the waiting room panel with invite code and connected seats", () => {
     render(<RoomShell room={buildWaitingRoom()} selfSeatId="seat-1" />);
@@ -64,5 +76,19 @@ describe("RoomShell", () => {
     expect(
       screen.getByRole("textbox", { name: "发送消息" }),
     ).toBeInTheDocument();
+  });
+
+  it("does not render the results panel when a finished room has no result yet", () => {
+    render(
+      <RoomShell
+        room={buildFinishedRoom({
+          result: null,
+        })}
+        selfSeatId="seat-1"
+      />,
+    );
+
+    expect(screen.queryByText("对局结算")).not.toBeInTheDocument();
+    expect(screen.getByText("聊天时间线")).toBeInTheDocument();
   });
 });

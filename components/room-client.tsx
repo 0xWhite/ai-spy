@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { RoomShell } from "@/components/room-shell";
-import type { RoomSnapshot } from "@/lib/server/room-store";
+import type { ClientRoomSnapshot } from "@/lib/server/room-store";
 
 type RoomClientProps = {
-  initialRoom: RoomSnapshot;
-  selfSeatId: string;
+  initialRoom: ClientRoomSnapshot;
+  selfSeatId: string | null;
 };
 
 export function RoomClient({ initialRoom, selfSeatId }: RoomClientProps) {
@@ -18,7 +18,7 @@ export function RoomClient({ initialRoom, selfSeatId }: RoomClientProps) {
 
     eventSource.onmessage = (event) => {
       try {
-        setRoom(JSON.parse(event.data) as RoomSnapshot);
+        setRoom(JSON.parse(event.data) as ClientRoomSnapshot);
       } catch {
         // Ignore malformed snapshots and keep the last known room state.
       }
@@ -42,11 +42,20 @@ export function RoomClient({ initialRoom, selfSeatId }: RoomClientProps) {
       throw new Error(`REQUEST_FAILED_${response.status}`);
     }
 
-    return (await response.json()) as RoomSnapshot;
+    return (await response.json()) as ClientRoomSnapshot;
   }
 
   const actions = useMemo(
-    () => ({
+    () => {
+      if (!selfSeatId) {
+        return {
+          start: undefined,
+          sendMessage: undefined,
+          vote: undefined,
+        };
+      }
+
+      return {
       async start() {
         setIsStarting(true);
 
@@ -71,7 +80,8 @@ export function RoomClient({ initialRoom, selfSeatId }: RoomClientProps) {
         });
         setRoom(nextRoom);
       },
-    }),
+      };
+    },
     [roomCode, selfSeatId],
   );
 

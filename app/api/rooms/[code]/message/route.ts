@@ -1,5 +1,5 @@
 import { postRoomMessageAction, RoomActionError } from "@/lib/server/room-actions";
-import { RoomStoreError } from "@/lib/server/room-store";
+import { RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +49,12 @@ export async function POST(
     const body = await readMessageBody(request);
 
     return Response.json(
-      postRoomMessageAction(code, {
-        seatId: body.seatId,
-        text: body.text,
-      }),
+      toClientRoomSnapshot(
+        postRoomMessageAction(code, {
+          seatId: body.seatId,
+          text: body.text,
+        }),
+      ),
     );
   } catch (error) {
     if (error instanceof InvalidRequestBodyError) {

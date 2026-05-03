@@ -1,5 +1,5 @@
 import { startRoomAction } from "@/lib/server/room-actions";
-import { RoomStoreError } from "@/lib/server/room-store";
+import { RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +16,7 @@ export async function POST(
   try {
     const { code } = await context.params;
 
-    return Response.json(startRoomAction(code));
+    return Response.json(toClientRoomSnapshot(startRoomAction(code)));
   } catch (error) {
     if (error instanceof RoomStoreError) {
       const status = error.code === "ROOM_NOT_FOUND" ? 404 : 409;

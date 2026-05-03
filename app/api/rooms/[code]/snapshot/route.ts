@@ -1,4 +1,4 @@
-import { roomStore } from "@/lib/server/room-store";
+import { roomStore, toClientRoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -19,5 +19,5 @@ export async function GET(
     return Response.json({ error: "ROOM_NOT_FOUND" }, { status: 404 });
   }
 
-  return Response.json(room);
+  return Response.json(toClientRoomSnapshot(room));
 }

@@ -1,4 +1,4 @@
-import { roomStore } from "@/lib/server/room-store";
+import { roomStore, toClientRoomSnapshot, type RoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -27,13 +27,15 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const sendSnapshot = (snapshot: unknown) => {
+      const sendSnapshot = (snapshot: RoomSnapshot) => {
         controller.enqueue(encoder.encode(toSsePayload(snapshot)));
       };
 
-      sendSnapshot(room);
-
-      const unsubscribe = roomStore.subscribe(code, sendSnapshot);
+      const unsubscribe = roomStore.subscribe(code, (snapshot) => {
+        sendSnapshot(toClientRoomSnapshot(snapshot));
+      });
+      const latestRoom = roomStore.getRoom(code) ?? room;
+      sendSnapshot(toClientRoomSnapshot(latestRoom));
       const handleAbort = () => {
         unsubscribe();
 
