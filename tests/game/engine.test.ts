@@ -1,5 +1,8 @@
 import {
+  advancePhaseFromTimeout,
+  appendPlayerMessage,
   buildInitialRoomState,
+  castVote,
   closeVotingPhase,
   eliminateSeat,
   enterTieBreakFromVotes,
@@ -33,6 +36,138 @@ describe("game engine", () => {
     });
     expect(room.config.endgameAliveSeatCount).toBe(3);
   });
+
+  it("prevents spectators from sending messages", () => {
+    const room = {
+      ...startGame(
+        buildInitialRoomState({
+          hostSeatId: "seat-2",
+        }),
+        1_700_000_000_000,
+      ),
+      seats: buildInitialRoomState({
+        hostSeatId: "seat-2",
+      }).seats.map((seat) =>
+        seat.id === "seat-3" ? { ...seat, status: "spectator" as const } : seat,
+      ),
+    };
+
+    expect(() =>
+      appendPlayerMessage(room, {
+        seatId: "seat-3",
+        text: "hello",
+        now: 1_700_000_000_001,
+      }),
+    ).toThrow("SEAT_CANNOT_SPEAK");
+  });
+
+  it("appends a trimmed player message for an alive seat", () => {
+    const room = startGame(
+      buildInitialRoomState({
+        hostSeatId: "seat-2",
+      }),
+      1_700_000_000_000,
+    );
+
+    const nextRoom = appendPlayerMessage(room, {
+      seatId: "seat-2",
+      text: "  大家好  ",
+      now: 1_700_000_000_001,
+    });
+
+    expect(nextRoom.messages.at(-1)).toMatchObject({
+      kind: "player",
+      seatId: "seat-2",
+      text: "大家好",
+      createdAt: 1_700_000_000_001,
+    });
+  });
+
+  it("rejects self-votes", () => {
+    const room = {
+      ...startGame(
+        buildInitialRoomState({
+          hostSeatId: "seat-2",
+        }),
+        1_700_000_000_000,
+      ),
+      phase: "voting" as const,
+    };
+
+    expect(() =>
+      castVote(room, {
+        voterSeatId: "seat-2",
+        targetSeatId: "seat-2",
+      }),
+    ).toThrow("CANNOT_VOTE_SELF");
+  });
+
+  it("rejects invalid vote targets", () => {
+    const room = {
+      ...startGame(
+        buildInitialRoomState({
+          hostSeatId: "seat-2",
+        }),
+        1_700_000_000_000,
+      ),
+      phase: "tiebreak_voting" as const,
+      tieSeatIds: ["seat-3", "seat-4"],
+    };
+
+    expect(() =>
+      castVote(room, {
+        voterSeatId: "seat-2",
+        targetSeatId: "seat-5",
+      }),
+    ).toThrow("INVALID_VOTE_TARGET");
+  });
+
+  it("advances discussion timeout into voting and appends a system message", () => {
+    const now = 1_700_000_100_000;
+    const room = startGame(
+      buildInitialRoomState({
+        hostSeatId: "seat-2",
+        voteSeconds: 45,
+      }),
+      now - 10_000,
+    );
+
+    const nextRoom = advancePhaseFromTimeout(room, now);
+
+    expect(nextRoom.phase).toBe("voting");
+    expect(nextRoom.phaseEndsAt).toBe(now + 45_000);
+    expect(nextRoom.messages.at(-1)).toMatchObject({
+      kind: "system",
+      text: "讨论结束，进入投票阶段",
+      createdAt: now,
+    });
+  });
+
+  it.each([
+    ["voting", "eliminated_reveal"],
+    ["tiebreak_voting", "eliminated_reveal"],
+  ] as const)(
+    "resolves %s timeout through closeVotingPhase",
+    (phase, expectedPhase) => {
+      const room = {
+        ...buildInitialRoomState({
+          hostSeatId: "seat-2",
+        }),
+        phase,
+        tieSeatIds: phase === "tiebreak_voting" ? ["seat-3", "seat-4"] : [],
+        votes: {
+          "seat-1": "seat-3",
+          "seat-2": "seat-3",
+          "seat-3": "seat-4",
+        },
+      };
+
+      const nextRoom = advancePhaseFromTimeout(room, 1_700_000_000_000);
+
+      expect(nextRoom.phase).toBe(expectedPhase);
+      expect(nextRoom.eliminatedSeatIds).toEqual(["seat-3"]);
+    },
+  );
 
   it("enters tie-break discussion with sorted tieSeatIds for a top-vote tie", () => {
     const now = 1_700_000_000_000;

@@ -7,10 +7,28 @@ import type {
   VoteMap,
 } from "@/lib/game/types";
 
+function invariant(code: string): never {
+  throw new Error(code);
+}
+
 function buildSystemMessage(text: string, createdAt: number): RoomMessage {
   return {
     id: `system-${createdAt}-${text}`,
     kind: "system",
+    text,
+    createdAt,
+  };
+}
+
+function buildPlayerMessage(
+  seatId: string,
+  text: string,
+  createdAt: number,
+): RoomMessage {
+  return {
+    id: `player-${seatId}-${createdAt}`,
+    kind: "player",
+    seatId,
     text,
     createdAt,
   };
@@ -22,6 +40,18 @@ function getAliveSeats(seats: SeatState[]) {
 
 function getAliveSeatIdSet(seats: SeatState[]) {
   return new Set(getAliveSeats(seats).map((seat) => seat.id));
+}
+
+function getSeatById(seats: SeatState[], seatId: string) {
+  return seats.find((seat) => seat.id === seatId);
+}
+
+function getValidVoteTargetSeatIds(room: RoomState) {
+  if (room.phase === "tiebreak_voting") {
+    return new Set(room.tieSeatIds);
+  }
+
+  return getAliveSeatIdSet(room.seats);
 }
 
 function countVotes(votes: VoteMap, validSeatIds: Set<string>) {
@@ -149,7 +179,7 @@ export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState 
 }
 
 export function closeVotingPhase(room: RoomState, now: number): RoomState {
-  const tallies = countVotes(room.votes, getAliveSeatIdSet(room.seats));
+  const tallies = countVotes(room.votes, getValidVoteTargetSeatIds(room));
 
   if (tallies.size === 0) {
     return {
@@ -178,6 +208,93 @@ export function closeVotingPhase(room: RoomState, now: number): RoomState {
   }
 
   return eliminateSeat(room, topSeatIds[0]);
+}
+
+export function appendPlayerMessage(
+  room: RoomState,
+  input: {
+    seatId: string;
+    text: string;
+    now: number;
+  },
+): RoomState {
+  const seat = getSeatById(room.seats, input.seatId);
+
+  if (!seat || seat.status !== "alive" || room.phase === "finished") {
+    invariant("SEAT_CANNOT_SPEAK");
+  }
+
+  return {
+    ...room,
+    messages: [
+      ...room.messages,
+      buildPlayerMessage(input.seatId, input.text.trim(), input.now),
+    ],
+  };
+}
+
+export function castVote(
+  room: RoomState,
+  input: {
+    voterSeatId: string;
+    targetSeatId: string;
+  },
+): RoomState {
+  const voterSeat = getSeatById(room.seats, input.voterSeatId);
+  const validTargetSeatIds = getValidVoteTargetSeatIds(room);
+
+  if (!voterSeat || voterSeat.status !== "alive" || room.phase === "finished") {
+    invariant("SEAT_CANNOT_VOTE");
+  }
+
+  if (input.voterSeatId === input.targetSeatId) {
+    invariant("CANNOT_VOTE_SELF");
+  }
+
+  if (!validTargetSeatIds.has(input.targetSeatId)) {
+    invariant("INVALID_VOTE_TARGET");
+  }
+
+  return {
+    ...room,
+    votes: {
+      ...room.votes,
+      [input.voterSeatId]: input.targetSeatId,
+    },
+  };
+}
+
+export function advancePhaseFromTimeout(
+  room: RoomState,
+  now: number,
+): RoomState {
+  switch (room.phase) {
+    case "discussion":
+      return {
+        ...room,
+        phase: "voting",
+        votes: {},
+        phaseEndsAt: now + room.config.voteSeconds * 1000,
+        messages: [
+          ...room.messages,
+          buildSystemMessage("讨论结束，进入投票阶段", now),
+        ],
+      };
+    case "tiebreak_discussion":
+      return {
+        ...room,
+        phase: "tiebreak_voting",
+        votes: {},
+        phaseEndsAt: now + room.config.voteSeconds * 1000,
+      };
+    case "voting":
+    case "tiebreak_voting":
+      return closeVotingPhase(room, now);
+    case "eliminated_reveal":
+      return startNextDiscussion(room, now);
+    default:
+      return room;
+  }
 }
 
 export function startGame(room: RoomState, now: number): RoomState {

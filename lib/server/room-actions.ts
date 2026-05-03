@@ -1,4 +1,4 @@
-import { startGame } from "@/lib/game/engine";
+import { appendPlayerMessage, castVote, startGame } from "@/lib/game/engine";
 import type { RoomState } from "@/lib/game/types";
 import {
   roomStore,
@@ -6,6 +6,33 @@ import {
   type InMemoryRoomStore,
   type CreateRoomInput,
 } from "@/lib/server/room-store";
+
+export class RoomActionError extends Error {
+  constructor(
+    public readonly code:
+      | "SEAT_CANNOT_SPEAK"
+      | "SEAT_CANNOT_VOTE"
+      | "CANNOT_VOTE_SELF"
+      | "INVALID_VOTE_TARGET",
+  ) {
+    super(code);
+    this.name = "RoomActionError";
+  }
+}
+
+function toActionError(error: unknown): never {
+  if (
+    error instanceof Error &&
+    (error.message === "SEAT_CANNOT_SPEAK" ||
+      error.message === "SEAT_CANNOT_VOTE" ||
+      error.message === "CANNOT_VOTE_SELF" ||
+      error.message === "INVALID_VOTE_TARGET")
+  ) {
+    throw new RoomActionError(error.message);
+  }
+
+  throw error;
+}
 
 export function createRoomAction(input: CreateRoomInput) {
   return roomStore.createRoom(input);
@@ -34,4 +61,58 @@ export function startRoomAction(
     ...startedRoom,
     code: room.code,
   });
+}
+
+export function postRoomMessageAction(
+  code: string,
+  input: {
+    seatId: string;
+    text: string;
+  },
+  now = Date.now(),
+  store: InMemoryRoomStore = roomStore,
+) {
+  const room = store.getRoom(code);
+  if (!room) {
+    throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+
+  try {
+    const updatedRoom = appendPlayerMessage(room as RoomState, {
+      ...input,
+      now,
+    });
+
+    return store.saveRoom({
+      ...updatedRoom,
+      code: room.code,
+    });
+  } catch (error) {
+    toActionError(error);
+  }
+}
+
+export function castRoomVoteAction(
+  code: string,
+  input: {
+    voterSeatId: string;
+    targetSeatId: string;
+  },
+  store: InMemoryRoomStore = roomStore,
+) {
+  const room = store.getRoom(code);
+  if (!room) {
+    throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+
+  try {
+    const updatedRoom = castVote(room as RoomState, input);
+
+    return store.saveRoom({
+      ...updatedRoom,
+      code: room.code,
+    });
+  } catch (error) {
+    toActionError(error);
+  }
 }

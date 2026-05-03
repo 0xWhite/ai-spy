@@ -1,4 +1,4 @@
-import { buildInitialRoomState } from "@/lib/game/engine";
+import { advancePhaseFromTimeout, buildInitialRoomState } from "@/lib/game/engine";
 import type { BuildInitialRoomStateInput, RoomState } from "@/lib/game/types";
 import { RoomBroadcast } from "@/lib/server/room-broadcast";
 
@@ -83,10 +83,55 @@ function generateRoomCode(existingCodes: Set<string>) {
 
 export class InMemoryRoomStore {
   private rooms = new Map<string, RoomSnapshot>();
+  private roomTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly broadcast = new RoomBroadcast<RoomSnapshot>(),
   ) {}
+
+  private clearRoomTimer(code: string) {
+    const timer = this.roomTimers.get(code);
+    if (!timer) {
+      return;
+    }
+
+    clearTimeout(timer);
+    this.roomTimers.delete(code);
+  }
+
+  private scheduleRoomTimer(room: RoomSnapshot) {
+    this.clearRoomTimer(room.code);
+
+    if (room.phase === "waiting" || room.phaseEndsAt === null) {
+      return;
+    }
+
+    const delay = Math.max(room.phaseEndsAt - Date.now(), 0);
+    const expectedPhaseEndsAt = room.phaseEndsAt;
+
+    const timer = setTimeout(() => {
+      const currentRoom = this.rooms.get(room.code);
+      if (
+        !currentRoom ||
+        currentRoom.phase === "waiting" ||
+        currentRoom.phaseEndsAt !== expectedPhaseEndsAt
+      ) {
+        return;
+      }
+
+      const advancedRoom = advancePhaseFromTimeout(
+        currentRoom as RoomState,
+        Date.now(),
+      );
+
+      this.saveRoom({
+        ...advancedRoom,
+        code: currentRoom.code,
+      });
+    }, delay);
+
+    this.roomTimers.set(room.code, timer);
+  }
 
   createRoom(input: CreateRoomInput) {
     const code = generateRoomCode(new Set(this.rooms.keys()));
@@ -121,6 +166,7 @@ export class InMemoryRoomStore {
     const storedSnapshot = cloneRoomSnapshot(snapshot);
 
     this.rooms.set(code, storedSnapshot);
+    this.scheduleRoomTimer(storedSnapshot);
     this.broadcast.emit(code, cloneRoomSnapshot(storedSnapshot));
 
     return cloneRoomSnapshot(storedSnapshot);

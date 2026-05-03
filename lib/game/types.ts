@@ -3,6 +3,7 @@ export type GamePhase =
   | "discussion"
   | "voting"
   | "tiebreak_discussion"
+  | "tiebreak_voting"
   | "eliminated_reveal"
   | "finished";
 
@@ -36,12 +37,22 @@ export interface SeatState {
   isHost: boolean;
 }
 
-export interface RoomMessage {
+export interface SystemRoomMessage {
   id: string;
   kind: "system";
   text: string;
   createdAt: number;
 }
+
+export interface PlayerRoomMessage {
+  id: string;
+  kind: "player";
+  seatId: string;
+  text: string;
+  createdAt: number;
+}
+
+export type RoomMessage = SystemRoomMessage | PlayerRoomMessage;
 
 export interface RoomResult {
   winner: "human" | "ai";

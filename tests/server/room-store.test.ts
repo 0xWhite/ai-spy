@@ -2,6 +2,10 @@ import { startRoomAction } from "@/lib/server/room-actions";
 import { InMemoryRoomStore, RoomStoreError } from "@/lib/server/room-store";
 
 describe("room store", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("createRoom returns an initial waiting snapshot with a 6-character code", () => {
     const store = new InMemoryRoomStore();
 
@@ -131,5 +135,32 @@ describe("room store", () => {
     expect(() => startRoomAction(room.code, 1_700_000_000_001, store)).toThrow(
       new RoomStoreError("ROOM_NOT_WAITING"),
     );
+  });
+
+  it("advances and persists a room when the phase timer expires", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T00:00:00.000Z"));
+
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 1,
+      roundSeconds: 180,
+      voteSeconds: 30,
+    });
+
+    startRoomAction(room.code, Date.now(), store);
+
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    const advancedRoom = store.getRoom(room.code);
+
+    expect(advancedRoom?.phase).toBe("voting");
+    expect(advancedRoom?.phaseEndsAt).toBe(Date.now() + 30_000);
+    expect(advancedRoom?.messages.at(-1)).toMatchObject({
+      kind: "system",
+      text: "讨论结束，进入投票阶段",
+    });
   });
 });
