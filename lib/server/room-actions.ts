@@ -12,6 +12,8 @@ export class RoomActionError extends Error {
     public readonly code:
       | "SEAT_CANNOT_SPEAK"
       | "SEAT_CANNOT_VOTE"
+      | "PHASE_DOES_NOT_ALLOW_MESSAGES"
+      | "PHASE_DOES_NOT_ALLOW_VOTES"
       | "CANNOT_VOTE_SELF"
       | "INVALID_VOTE_TARGET",
   ) {
@@ -25,6 +27,8 @@ function toActionError(error: unknown): never {
     error instanceof Error &&
     (error.message === "SEAT_CANNOT_SPEAK" ||
       error.message === "SEAT_CANNOT_VOTE" ||
+      error.message === "PHASE_DOES_NOT_ALLOW_MESSAGES" ||
+      error.message === "PHASE_DOES_NOT_ALLOW_VOTES" ||
       error.message === "CANNOT_VOTE_SELF" ||
       error.message === "INVALID_VOTE_TARGET")
   ) {

@@ -163,4 +163,36 @@ describe("room store", () => {
       text: "讨论结束，进入投票阶段",
     });
   });
+
+  it("settles zero-vote timeout without rescheduling an immediate loop", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T00:00:00.000Z"));
+
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+      voteSeconds: 30,
+    });
+    const listener = vi.fn();
+
+    store.subscribe(room.code, listener);
+    store.saveRoom({
+      ...room,
+      phase: "voting",
+      phaseEndsAt: Date.now() + 1_000,
+      votes: {},
+    });
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    const settledRoom = store.getRoom(room.code);
+
+    expect(settledRoom?.phase).toBe("voting");
+    expect(settledRoom?.phaseEndsAt).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(2);
+  });
 });

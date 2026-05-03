@@ -83,6 +83,26 @@ describe("game engine", () => {
     });
   });
 
+  it("rejects player messages outside discussion phases", () => {
+    const room = {
+      ...startGame(
+        buildInitialRoomState({
+          hostSeatId: "seat-2",
+        }),
+        1_700_000_000_000,
+      ),
+      phase: "voting" as const,
+    };
+
+    expect(() =>
+      appendPlayerMessage(room, {
+        seatId: "seat-2",
+        text: "still talking",
+        now: 1_700_000_000_001,
+      }),
+    ).toThrow("PHASE_DOES_NOT_ALLOW_MESSAGES");
+  });
+
   it("rejects self-votes", () => {
     const room = {
       ...startGame(
@@ -120,6 +140,22 @@ describe("game engine", () => {
         targetSeatId: "seat-5",
       }),
     ).toThrow("INVALID_VOTE_TARGET");
+  });
+
+  it("rejects votes outside voting phases", () => {
+    const room = startGame(
+      buildInitialRoomState({
+        hostSeatId: "seat-2",
+      }),
+      1_700_000_000_000,
+    );
+
+    expect(() =>
+      castVote(room, {
+        voterSeatId: "seat-2",
+        targetSeatId: "seat-3",
+      }),
+    ).toThrow("PHASE_DOES_NOT_ALLOW_VOTES");
   });
 
   it("advances discussion timeout into voting and appends a system message", () => {
@@ -166,6 +202,30 @@ describe("game engine", () => {
 
       expect(nextRoom.phase).toBe(expectedPhase);
       expect(nextRoom.eliminatedSeatIds).toEqual(["seat-3"]);
+    },
+  );
+
+  it.each([
+    ["voting", []],
+    ["tiebreak_voting", ["seat-3", "seat-4"]],
+  ] as const)(
+    "settles %s timeout with zero valid votes without leaving an active timer",
+    (phase, tieSeatIds) => {
+      const room = {
+        ...buildInitialRoomState({
+          hostSeatId: "seat-2",
+        }),
+        phase,
+        tieSeatIds,
+        phaseEndsAt: 1_700_000_000_000,
+        votes: {},
+      };
+
+      const nextRoom = advancePhaseFromTimeout(room, 1_700_000_000_000);
+
+      expect(nextRoom.phase).toBe(phase);
+      expect(nextRoom.votes).toEqual({});
+      expect(nextRoom.phaseEndsAt).toBeNull();
     },
   );
 

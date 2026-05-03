@@ -46,6 +46,14 @@ function getSeatById(seats: SeatState[], seatId: string) {
   return seats.find((seat) => seat.id === seatId);
 }
 
+function canSpeakInPhase(room: RoomState) {
+  return room.phase === "discussion" || room.phase === "tiebreak_discussion";
+}
+
+function canVoteInPhase(room: RoomState) {
+  return room.phase === "voting" || room.phase === "tiebreak_voting";
+}
+
 function getValidVoteTargetSeatIds(room: RoomState) {
   if (room.phase === "tiebreak_voting") {
     return new Set(room.tieSeatIds);
@@ -185,6 +193,7 @@ export function closeVotingPhase(room: RoomState, now: number): RoomState {
     return {
       ...room,
       votes: {},
+      phaseEndsAt: null,
     };
   }
 
@@ -224,6 +233,10 @@ export function appendPlayerMessage(
     invariant("SEAT_CANNOT_SPEAK");
   }
 
+  if (!canSpeakInPhase(room)) {
+    invariant("PHASE_DOES_NOT_ALLOW_MESSAGES");
+  }
+
   return {
     ...room,
     messages: [
@@ -245,6 +258,10 @@ export function castVote(
 
   if (!voterSeat || voterSeat.status !== "alive" || room.phase === "finished") {
     invariant("SEAT_CANNOT_VOTE");
+  }
+
+  if (!canVoteInPhase(room)) {
+    invariant("PHASE_DOES_NOT_ALLOW_VOTES");
   }
 
   if (input.voterSeatId === input.targetSeatId) {
