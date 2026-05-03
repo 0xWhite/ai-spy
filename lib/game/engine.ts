@@ -1,8 +1,4 @@
-import {
-  AI_WIN_ALIVE_SEAT_COUNT,
-  DEFAULT_ROOM_CONFIG,
-  SEAT_COLORS,
-} from "@/lib/game/config";
+import { DEFAULT_ROOM_CONFIG, SEAT_COLORS } from "@/lib/game/config";
 import type {
   BuildInitialRoomStateInput,
   RoomMessage,
@@ -49,6 +45,8 @@ export function buildInitialRoomState(
     ...DEFAULT_ROOM_CONFIG,
     totalSeats: input.totalSeats ?? DEFAULT_ROOM_CONFIG.totalSeats,
     aiCount: input.aiCount ?? DEFAULT_ROOM_CONFIG.aiCount,
+    endgameAliveSeatCount:
+      input.endgameAliveSeatCount ?? DEFAULT_ROOM_CONFIG.endgameAliveSeatCount,
     roundOneSeconds:
       input.roundOneSeconds ?? DEFAULT_ROOM_CONFIG.roundOneSeconds,
     roundSeconds: input.roundSeconds ?? DEFAULT_ROOM_CONFIG.roundSeconds,
@@ -126,7 +124,7 @@ export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState 
     };
   }
 
-  if (aliveSeats.length === AI_WIN_ALIVE_SEAT_COUNT) {
+  if (aliveSeats.length === room.config.endgameAliveSeatCount) {
     return {
       ...room,
       phase: "finished",

@@ -20,6 +20,7 @@ export type SeatColor =
 export interface RoomConfig {
   totalSeats: number;
   aiCount: number;
+  endgameAliveSeatCount: number;
   roundOneSeconds: number;
   roundSeconds: number;
   voteSeconds: number;

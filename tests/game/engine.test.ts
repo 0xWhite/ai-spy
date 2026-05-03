@@ -6,7 +6,6 @@ import {
   startGame,
   startNextDiscussion,
 } from "@/lib/game/engine";
-import { AI_WIN_ALIVE_SEAT_COUNT } from "@/lib/game/config";
 
 describe("game engine", () => {
   it("builds the initial room state with default seats and host connection", () => {
@@ -32,6 +31,7 @@ describe("game engine", () => {
       isHost: true,
       status: "alive",
     });
+    expect(room.config.endgameAliveSeatCount).toBe(3);
   });
 
   it("enters tie-break discussion with sorted tieSeatIds for a top-vote tie", () => {
@@ -84,13 +84,14 @@ describe("game engine", () => {
     expect(nextRoom.eliminatedSeatIds).toEqual(["seat-1"]);
   });
 
-  it("ends the game with an AI winner at the MVP alive-seat threshold", () => {
+  it("ends the game with an AI winner at the config-backed alive-seat threshold", () => {
     const room = buildInitialRoomState({
       hostSeatId: "seat-2",
-      totalSeats: AI_WIN_ALIVE_SEAT_COUNT + 1,
+      totalSeats: 5,
+      endgameAliveSeatCount: 4,
     });
 
-    const nextRoom = eliminateSeat(room, "seat-4");
+    const nextRoom = eliminateSeat(room, "seat-5");
 
     expect(nextRoom.phase).toBe("finished");
     expect(nextRoom.result?.winner).toBe("ai");
