@@ -18,3 +18,5 @@ export const DEFAULT_ROOM_CONFIG: RoomConfig = {
   voteSeconds: 60,
   tiebreakSeconds: 60,
 };
+
+export const AI_WIN_ALIVE_SEAT_COUNT = 3;

@@ -1,4 +1,8 @@
-import { DEFAULT_ROOM_CONFIG, SEAT_COLORS } from "@/lib/game/config";
+import {
+  AI_WIN_ALIVE_SEAT_COUNT,
+  DEFAULT_ROOM_CONFIG,
+  SEAT_COLORS,
+} from "@/lib/game/config";
 import type {
   BuildInitialRoomStateInput,
   RoomMessage,
@@ -20,10 +24,18 @@ function getAliveSeats(seats: SeatState[]) {
   return seats.filter((seat) => seat.status === "alive");
 }
 
-function countVotes(votes: VoteMap) {
+function getAliveSeatIdSet(seats: SeatState[]) {
+  return new Set(getAliveSeats(seats).map((seat) => seat.id));
+}
+
+function countVotes(votes: VoteMap, validSeatIds: Set<string>) {
   const tallies = new Map<string, number>();
 
   for (const targetSeatId of Object.values(votes)) {
+    if (!validSeatIds.has(targetSeatId)) {
+      continue;
+    }
+
     tallies.set(targetSeatId, (tallies.get(targetSeatId) ?? 0) + 1);
   }
 
@@ -35,7 +47,14 @@ export function buildInitialRoomState(
 ): RoomState {
   const config = {
     ...DEFAULT_ROOM_CONFIG,
-    ...input,
+    totalSeats: input.totalSeats ?? DEFAULT_ROOM_CONFIG.totalSeats,
+    aiCount: input.aiCount ?? DEFAULT_ROOM_CONFIG.aiCount,
+    roundOneSeconds:
+      input.roundOneSeconds ?? DEFAULT_ROOM_CONFIG.roundOneSeconds,
+    roundSeconds: input.roundSeconds ?? DEFAULT_ROOM_CONFIG.roundSeconds,
+    voteSeconds: input.voteSeconds ?? DEFAULT_ROOM_CONFIG.voteSeconds,
+    tiebreakSeconds:
+      input.tiebreakSeconds ?? DEFAULT_ROOM_CONFIG.tiebreakSeconds,
   };
 
   return {
@@ -67,16 +86,24 @@ export function buildInitialRoomState(
 export function enterTieBreakFromVotes(
   room: RoomState,
   tieSeatIds: string[],
+  now: number,
 ): RoomState {
   return {
     ...room,
     phase: "tiebreak_discussion",
     tieSeatIds: [...tieSeatIds].sort(),
     votes: {},
+    phaseEndsAt: now + room.config.tiebreakSeconds * 1000,
   };
 }
 
 export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState {
+  const aliveSeatIds = getAliveSeatIdSet(room.seats);
+
+  if (!aliveSeatIds.has(targetSeatId)) {
+    return room;
+  }
+
   const seats = room.seats.map((seat) =>
     seat.id === targetSeatId ? { ...seat, status: "spectator" as const } : seat,
   );
@@ -99,7 +126,7 @@ export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState 
     };
   }
 
-  if (aliveSeats.length === 3) {
+  if (aliveSeats.length === AI_WIN_ALIVE_SEAT_COUNT) {
     return {
       ...room,
       phase: "finished",
@@ -123,8 +150,8 @@ export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState 
   };
 }
 
-export function closeVotingPhase(room: RoomState): RoomState {
-  const tallies = countVotes(room.votes);
+export function closeVotingPhase(room: RoomState, now: number): RoomState {
+  const tallies = countVotes(room.votes, getAliveSeatIdSet(room.seats));
 
   if (tallies.size === 0) {
     return {
@@ -149,7 +176,7 @@ export function closeVotingPhase(room: RoomState): RoomState {
   }
 
   if (topSeatIds.length > 1) {
-    return enterTieBreakFromVotes(room, topSeatIds);
+    return enterTieBreakFromVotes(room, topSeatIds, now);
   }
 
   return eliminateSeat(room, topSeatIds[0]);

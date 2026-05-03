@@ -6,6 +6,7 @@ import {
   startGame,
   startNextDiscussion,
 } from "@/lib/game/engine";
+import { AI_WIN_ALIVE_SEAT_COUNT } from "@/lib/game/config";
 
 describe("game engine", () => {
   it("builds the initial room state with default seats and host connection", () => {
@@ -34,6 +35,7 @@ describe("game engine", () => {
   });
 
   it("enters tie-break discussion with sorted tieSeatIds for a top-vote tie", () => {
+    const now = 1_700_000_000_000;
     const room = {
       ...buildInitialRoomState({
         hostSeatId: "seat-2",
@@ -47,21 +49,24 @@ describe("game engine", () => {
       },
     };
 
-    const nextRoom = closeVotingPhase(room);
+    const nextRoom = closeVotingPhase(room, now);
 
     expect(nextRoom.phase).toBe("tiebreak_discussion");
     expect(nextRoom.tieSeatIds).toEqual(["seat-3", "seat-4"]);
+    expect(nextRoom.phaseEndsAt).toBe(now + 60_000);
   });
 
-  it("builds a tie-break discussion state from tied vote targets", () => {
+  it("builds a tie-break discussion state with the configured timer", () => {
+    const now = 1_700_000_000_000;
     const room = buildInitialRoomState({
       hostSeatId: "seat-2",
     });
 
-    const nextRoom = enterTieBreakFromVotes(room, ["seat-4", "seat-2"]);
+    const nextRoom = enterTieBreakFromVotes(room, ["seat-4", "seat-2"], now);
 
     expect(nextRoom.phase).toBe("tiebreak_discussion");
     expect(nextRoom.tieSeatIds).toEqual(["seat-2", "seat-4"]);
+    expect(nextRoom.phaseEndsAt).toBe(now + 60_000);
   });
 
   it("eliminating the last AI ends the game with a human winner", () => {
@@ -77,6 +82,47 @@ describe("game engine", () => {
       "spectator",
     );
     expect(nextRoom.eliminatedSeatIds).toEqual(["seat-1"]);
+  });
+
+  it("ends the game with an AI winner at the MVP alive-seat threshold", () => {
+    const room = buildInitialRoomState({
+      hostSeatId: "seat-2",
+      totalSeats: AI_WIN_ALIVE_SEAT_COUNT + 1,
+    });
+
+    const nextRoom = eliminateSeat(room, "seat-4");
+
+    expect(nextRoom.phase).toBe("finished");
+    expect(nextRoom.result?.winner).toBe("ai");
+  });
+
+  it("ignores invalid vote targets when closing voting", () => {
+    const room = {
+      ...buildInitialRoomState({
+        hostSeatId: "seat-2",
+      }),
+      phase: "voting" as const,
+      votes: {
+        "seat-1": "not-a-seat",
+        "seat-2": "seat-3",
+        "seat-3": "seat-3",
+      },
+    };
+
+    const nextRoom = closeVotingPhase(room, 1_700_000_000_000);
+
+    expect(nextRoom.phase).toBe("eliminated_reveal");
+    expect(nextRoom.eliminatedSeatIds).toEqual(["seat-3"]);
+  });
+
+  it("does not corrupt state when asked to eliminate an unknown seat", () => {
+    const room = buildInitialRoomState({
+      hostSeatId: "seat-2",
+    });
+
+    const nextRoom = eliminateSeat(room, "seat-999");
+
+    expect(nextRoom).toEqual(room);
   });
 
   it("starting round one discussion sets a 5-minute timer", () => {
