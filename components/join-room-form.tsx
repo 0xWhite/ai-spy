@@ -12,6 +12,7 @@ type JoinRoomFormProps = {
 };
 
 const defaultJoinHandler = async () => {};
+const INVITE_CODE_PATTERN = /^[A-Z0-9]{6}$/;
 
 export function JoinRoomForm({ onJoin = defaultJoinHandler }: JoinRoomFormProps) {
   const [isPending, setIsPending] = useState(false);
@@ -23,7 +24,7 @@ export function JoinRoomForm({ onJoin = defaultJoinHandler }: JoinRoomFormProps)
     const rawCode = String(formData.get("code") ?? "");
     const code = rawCode.replace(/\s+/g, "").toUpperCase();
 
-    if (!code) {
+    if (!INVITE_CODE_PATTERN.test(code)) {
       return;
     }
 
@@ -43,6 +44,7 @@ export function JoinRoomForm({ onJoin = defaultJoinHandler }: JoinRoomFormProps)
         <input
           autoComplete="off"
           className="h-11 rounded-lg border border-slate-300 bg-slate-50 px-3 text-sm uppercase text-slate-950 outline-none transition focus:border-slate-500 focus:bg-white"
+          maxLength={12}
           name="code"
           type="text"
         />

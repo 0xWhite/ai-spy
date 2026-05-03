@@ -16,6 +16,27 @@ type CreateRoomFormProps = {
 
 const defaultCreateHandler = async () => {};
 
+function readConfiguredNumber(
+  formData: FormData,
+  fieldName: string,
+  fallback: number,
+  range: { min: number; max: number },
+) {
+  const rawValue = String(formData.get(fieldName) ?? "").trim();
+
+  if (!rawValue) {
+    return fallback;
+  }
+
+  const value = Number(rawValue);
+
+  if (!Number.isInteger(value) || value < range.min || value > range.max) {
+    return null;
+  }
+
+  return value;
+}
+
 export function CreateRoomForm({
   onCreate = defaultCreateHandler,
 }: CreateRoomFormProps) {
@@ -25,13 +46,25 @@ export function CreateRoomForm({
     event.preventDefault();
 
     const formData = new FormData(event.currentTarget);
+    const totalSeats = readConfiguredNumber(formData, "totalSeats", 7, {
+      min: 5,
+      max: 9,
+    });
+    const aiCount = readConfiguredNumber(formData, "aiCount", 1, {
+      min: 1,
+      max: 2,
+    });
+
+    if (totalSeats === null || aiCount === null) {
+      return;
+    }
 
     setIsPending(true);
 
     try {
       await onCreate({
-        totalSeats: Number(formData.get("totalSeats") ?? 7),
-        aiCount: Number(formData.get("aiCount") ?? 1),
+        totalSeats,
+        aiCount,
         roundOneSeconds: Number(formData.get("roundOneSeconds") ?? 300),
         roundSeconds: Number(formData.get("roundSeconds") ?? 180),
       });

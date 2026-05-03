@@ -13,3 +13,15 @@ it("submits the normalized invite code", async () => {
 
   expect(onJoin).toHaveBeenCalledWith({ code: "ABC123" });
 });
+
+it("does not submit malformed normalized invite codes", async () => {
+  const user = userEvent.setup();
+  const onJoin = vi.fn().mockResolvedValue(undefined);
+
+  render(<JoinRoomForm onJoin={onJoin} />);
+
+  await user.type(screen.getByLabelText("邀请码"), "ab 12");
+  await user.click(screen.getByRole("button", { name: "加入房间" }));
+
+  expect(onJoin).not.toHaveBeenCalled();
+});

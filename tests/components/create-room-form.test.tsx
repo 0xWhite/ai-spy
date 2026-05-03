@@ -17,3 +17,21 @@ it("submits the default room config", async () => {
     roundSeconds: 180,
   });
 });
+
+it("preserves defaults when numeric fields are left blank", async () => {
+  const user = userEvent.setup();
+  const onCreate = vi.fn().mockResolvedValue(undefined);
+
+  render(<CreateRoomForm onCreate={onCreate} />);
+
+  await user.clear(screen.getByLabelText("总人数"));
+  await user.clear(screen.getByLabelText("AI 数量"));
+  await user.click(screen.getByRole("button", { name: "创建房间" }));
+
+  expect(onCreate).toHaveBeenCalledWith({
+    totalSeats: 7,
+    aiCount: 1,
+    roundOneSeconds: 300,
+    roundSeconds: 180,
+  });
+});
