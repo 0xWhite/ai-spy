@@ -1,385 +1,387 @@
-# AI Spy Chatroom Design
+# AI 卧底聊天室 设计文档
 
-Date: 2026-05-03
-Project: `F:\code\ai-spy`
-Status: Approved in conversation, written for review
+日期：2026-05-03  
+项目：`F:\code\ai-spy`  
+状态：已在对话中确认，等待用户审阅
 
-## Summary
+## 一、概述
 
-AI Spy Chatroom is a real-time social deduction game played in a shared chat room. A host creates a private room with an invite code, real players join, and 1 to 2 AI agents are secretly mixed into the game as undercover participants. Players only see each seat as an avatar color plus a number, not a nickname or profile identity.
+AI 卧底聊天室是一个实时多人社交推理游戏。房主创建一个带邀请码的私密房间，真人玩家加入后，系统会暗中混入 1 到 2 个 AI 参与者。所有玩家在界面上只会看到“头像颜色 + 编号席位”，不会看到昵称或个人资料。
 
-The game alternates between timed discussion and voting rounds. Round 1 discussion lasts 5 minutes. Later discussion rounds last 3 minutes each. After each discussion phase, surviving players vote to eliminate one seat. Eliminated players become spectators who can keep watching but can no longer speak or vote. When 3 players remain alive, the game ends immediately. If any AI is still alive at that point, the human team loses. If all AI have been eliminated before then, the human team wins.
+游戏以“限时讨论 + 投票淘汰”的循环推进。第 1 轮讨论时长为 5 分钟，之后每轮讨论时长为 3 分钟。每轮讨论结束后，仍存活的玩家投票淘汰 1 个席位。被淘汰的玩家进入旁观状态，可以继续观看，但不能发言和投票。
 
-The first version focuses on one complete playable loop for private friend-group games. It does not include public matchmaking, accounts, rankings, or extra game modes.
+当场上只剩 3 名存活者时，游戏立即结算。如果此时仍有任意 AI 存活，则人类阵营失败；如果所有 AI 都已在此前被投出局，则人类阵营获胜。
 
-## Product Goals
+第一版聚焦在“朋友局可完整玩完一局”的核心体验，不包含公开匹配、账号体系、排行榜和额外模式。
 
-The first version succeeds if it achieves these outcomes:
+## 二、产品目标
 
-1. A host can create and start a private room with minimal setup.
-2. A full room can play from lobby through final reveal without moderator intervention.
-3. Players feel real uncertainty about which seats are AI.
+第一版的成功标准是：
 
-## Design Principles
+1. 房主可以用很低的操作成本创建并开启一局游戏。
+2. 一整房玩家可以从等待室顺畅进行到最终结算，中间不需要人工干预。
+3. 玩家在整局过程中会认真怀疑“谁是 AI”，而不是一眼看穿。
 
-- Keep the product focused on one game loop, not a general social platform.
-- Make the room feel like a game table, not a profile-driven chat app.
-- Use strong system pacing through visible phases and synchronized countdowns.
-- Keep AI believable rather than maximally intelligent.
-- Preserve suspense by hiding AI identities until the game ends.
+## 三、设计原则
 
-## Game Rules
+- 聚焦单一核心玩法，不把第一版做成泛社交平台
+- 让房间更像“游戏桌”，而不是“账号聊天软件”
+- 用明确阶段提示和同步倒计时建立节奏感
+- 让 AI 更像真人玩家，而不是追求绝对聪明
+- 在结算前始终隐藏 AI 身份，保持悬念
 
-### Room configuration
+## 四、游戏规则
 
-- Entry mode: host-created private room with invite code
-- Default room size: 7 total seats
-- AI count: configurable by host, default 1, allowed values in v1 are 1 or 2
-- Discussion timers:
-  - Round 1: 5 minutes
-  - Later rounds: 3 minutes
-- Tie-break discussion timer: 60 seconds
-- Voting timer: 60 seconds
+### 4.1 房间配置
 
-### Seat presentation
+- 进入方式：房主创建私密房间，玩家通过邀请码加入
+- 默认总人数：7 人
+- AI 数量：房主可配置，默认 1 个；第一版允许配置为 1 或 2 个
+- 讨论阶段时长：
+  - 第 1 轮：5 分钟
+  - 后续轮次：3 分钟
+- 平票加赛发言时长：60 秒
+- 投票阶段时长：60 秒
 
-- Each participant is shown only as an avatar color plus seat number
-- Nicknames are not shown
-- Profile information is not shown
+### 4.2 席位展示
 
-Example seat labels:
+- 每位参与者只显示“头像颜色 + 编号”
+- 不显示昵称
+- 不显示个人资料
 
-- Red 1
-- Blue 4
-- Green 6
+示例：
 
-### Game flow
+- 红色 1 号
+- 蓝色 4 号
+- 绿色 6 号
 
-1. Host creates room and receives invite code.
-2. Players join the waiting room until the room reaches the required player count.
-3. Host starts the game.
-4. The system assigns hidden roles:
-   - Human seats
-   - AI seats
-5. Discussion and voting rounds repeat until a win condition is reached.
-6. Eliminated seats become spectators.
-7. The game ends immediately when either:
-   - all AI seats have been eliminated, or
-   - only 3 seats remain alive
+### 4.3 游戏流程
 
-### Discussion phase
+1. 房主创建房间并获得邀请码。
+2. 玩家进入等待室，直到房间人数达到要求。
+3. 房主开始游戏。
+4. 系统暗中分配身份：
+   - 真人席位
+   - AI 席位
+5. 游戏进入多轮“讨论 + 投票”循环。
+6. 被淘汰的席位进入旁观状态。
+7. 游戏在以下任一条件满足时立即结束：
+   - 所有 AI 都已被淘汰
+   - 场上只剩 3 名存活者
 
-- Round 1 discussion lasts 5 minutes
-- Every later discussion phase lasts 3 minutes
-- Only living players can send messages
-- Spectators can watch but cannot send messages
-- The current round countdown is shown in real time to everyone
-- System messages are inserted into the chat stream to mark phase changes and alerts
+### 4.4 讨论阶段
 
-### Voting phase
+- 第 1 轮讨论时长为 5 分钟
+- 后续每轮讨论时长为 3 分钟
+- 只有存活玩家可以发言
+- 旁观玩家可以看，但不能发言
+- 当前轮次倒计时必须实时展示给所有玩家
+- 系统消息会插入聊天流中，用于提示阶段切换和关键事件
 
-- Only living players can vote
-- A player cannot vote for their own seat
-- A player can only vote for currently living seats
-- Votes can be changed until the voting phase closes
-- The phase ends when all living players have voted or the voting timer expires
-- The eliminated seat is announced, but its AI or human identity is not revealed
+### 4.5 投票阶段
 
-### Tie-break rules
+- 只有存活玩家可以投票
+- 玩家不能投自己
+- 玩家只能投当前仍存活的席位
+- 投票截止前允许修改投票目标
+- 当所有存活玩家都投票完毕，或投票倒计时结束时，立即结算本轮投票
+- 系统只公布“谁被淘汰”，不公布其是否是 AI
 
-If the highest vote total is tied:
+### 4.6 平票规则
 
-1. Start a 60-second tie-break discussion phase.
-2. Start a tie-break re-vote limited to the tied seats.
-3. If the re-vote is still tied, randomly eliminate one of the tied seats.
+如果本轮最高票出现平票：
 
-This rule exists to prevent deadlock and keep a room from stalling indefinitely.
+1. 进入 60 秒平票加赛发言阶段
+2. 加赛结束后，只在平票席位之间进行重投
+3. 如果重投后仍然平票，则在平票席位中随机淘汰 1 人
 
-### Elimination and spectator rules
+这条规则的目的，是防止房间长期卡死在平票循环中。
 
-- Eliminated seats become spectators immediately
-- Spectators can continue reading chat and system messages
-- Spectators cannot speak
-- Spectators cannot vote
+### 4.7 淘汰与旁观规则
 
-### Win conditions
+- 被淘汰席位会立刻进入旁观状态
+- 旁观者可以继续查看聊天和系统消息
+- 旁观者不能发言
+- 旁观者不能投票
 
-Humans win when all AI seats have been eliminated.
+### 4.8 胜负条件
 
-AI wins when 3 seats remain alive and at least one surviving seat is AI.
+当所有 AI 都已被淘汰时，人类阵营获胜。
 
-### Multi-AI rule
+当场上只剩 3 名存活者，且其中至少有 1 个 AI 存活时，AI 阵营获胜。
 
-If the room uses 2 AI seats:
+### 4.9 双 AI 规则
 
-- each AI knows there is another AI in the game
-- this hidden coordination is internal only
-- the UI does not expose any relationship between AI seats
+当房间配置为 2 个 AI 时：
 
-## Product Structure
+- 两个 AI 知道场上存在彼此
+- 这种协同关系只在系统内部生效
+- 界面上不会向玩家暴露任何 AI 之间的关联
 
-The first version uses four core views.
+## 五、产品结构
 
-### 1. Create room view
+第一版包含 4 个核心页面 / 视图。
 
-Purpose: let the host create a room quickly.
+### 5.1 创建房间页
 
-Visible controls:
+目标：让房主快速创建一局游戏。
 
-- total seats
-- AI count
-- round 1 duration
-- later round duration
-- create room action
+可见配置项：
 
-The UI should prefer strong defaults over excessive options.
+- 总人数
+- AI 数量
+- 第 1 轮时长
+- 后续轮次时长
+- 创建房间按钮
 
-### 2. Waiting room view
+界面应尽量依赖默认值，而不是让用户填写大量配置。
 
-Purpose: let players gather and understand the match before it starts.
+### 5.2 等待室
 
-Visible content:
+目标：让玩家集合，并在开局前理解本局信息。
 
-- invite code
-- current player count versus target
-- seat list shown as avatar color plus number
-- short rule summary
-- host start action once start conditions are met
+可见内容：
 
-### 3. In-game room view
+- 邀请码
+- 当前人数 / 目标人数
+- 席位列表，仅显示“头像颜色 + 编号”
+- 简短规则摘要
+- 房主开始按钮（满足开局条件后可用）
 
-Purpose: serve as the single main play surface.
+### 5.3 游戏主界面
 
-Layout:
+目标：承载完整对局体验，是整局游戏的核心操作面。
 
-- Top status bar
-  - current round
-  - current phase
-  - synchronized real-time countdown
-  - living player count
-- Main chat area
-  - player messages
-  - system phase messages
-  - elimination announcements
-- Contextual action area
-  - message composer during discussion
-  - vote panel during voting
-  - spectator notice when eliminated
-  - tie-break focus state when relevant
+布局建议：
 
-The countdown must remain visible at all times during active phases.
+- 顶部状态栏
+  - 当前轮次
+  - 当前阶段
+  - 实时同步倒计时
+  - 存活人数
+- 中间聊天主区域
+  - 玩家消息
+  - 系统阶段提示
+  - 淘汰公告
+- 右侧或底部操作区域
+  - 讨论阶段显示输入框与发送按钮
+  - 投票阶段显示投票面板
+  - 出局后显示旁观提示
+  - 平票时显示加赛与重投聚焦状态
 
-### 4. Results view
+倒计时必须在活跃阶段始终可见，不能藏在次要位置。
 
-Purpose: resolve suspense and support replay.
+### 5.4 结算页
 
-Visible content:
+目标：公布结果，完成悬念闭环，并支持再来一局。
 
-- human win or AI win result
-- surviving seats
-- elimination order
-- final AI identity reveal
-- replay or return action
+可见内容：
 
-## System Messages
+- 人类胜利 / AI 胜利
+- 存活席位
+- 淘汰顺序
+- AI 身份揭示
+- 再来一局或返回房间的操作
 
-System messages are part of the experience, not just implementation detail. They should appear in the same timeline as chat, with clear visual distinction.
+## 六、系统消息
 
-Examples:
+系统消息是玩法体验的一部分，不只是实现细节。它们应当出现在与聊天流同一条时间线中，但视觉上要与普通玩家消息明显区分。
 
-- Round 1 discussion started
-- 30 seconds remaining
-- Discussion ended, voting started
-- Red 4 eliminated and moved to spectator mode
-- Tie detected, 60-second tie-break started
+示例：
 
-## State Model
+- 第 1 轮讨论开始
+- 距离本轮结束还有 30 秒
+- 讨论结束，进入投票阶段
+- 红色 4 号被淘汰，进入旁观状态
+- 出现平票，进入 60 秒加赛发言
 
-Each room follows a strict state machine.
+## 七、状态模型
 
-### Room states
+每个房间都应遵循一套明确的状态机。
 
-- `waiting`
-- `discussion`
-- `voting`
-- `tiebreak_discussion`
-- `tiebreak_voting`
-- `eliminated_reveal`
-- `finished`
+### 7.1 房间状态
 
-### State transitions
+- `waiting`：等待中
+- `discussion`：讨论阶段
+- `voting`：投票阶段
+- `tiebreak_discussion`：平票加赛发言
+- `tiebreak_voting`：平票重投
+- `eliminated_reveal`：本轮淘汰结算
+- `finished`：最终结算
 
-- `waiting` -> `discussion` when the host starts a valid room
-- `discussion` -> `voting` when the timer expires
-- `voting` -> `eliminated_reveal` when voting resolves without a tie
-- `voting` -> `tiebreak_discussion` when the highest votes are tied
-- `tiebreak_discussion` -> `tiebreak_voting` when the tie-break timer expires
-- `tiebreak_voting` -> `eliminated_reveal` after the re-vote or random tie resolution
-- `eliminated_reveal` -> `finished` if a win condition is reached
-- `eliminated_reveal` -> `discussion` for the next round otherwise
+### 7.2 状态流转
 
-### Core room data
+- `waiting` -> `discussion`：房主开启有效房间后进入游戏
+- `discussion` -> `voting`：讨论倒计时结束
+- `voting` -> `eliminated_reveal`：投票结算且未平票
+- `voting` -> `tiebreak_discussion`：投票最高票平票
+- `tiebreak_discussion` -> `tiebreak_voting`：加赛发言结束
+- `tiebreak_voting` -> `eliminated_reveal`：重投完成或通过随机淘汰完成结算
+- `eliminated_reveal` -> `finished`：满足胜负条件
+- `eliminated_reveal` -> `discussion`：未满足胜负条件，进入下一轮
 
-Each room must track at least:
+### 7.3 房间核心数据
 
-- room configuration
-- current room state
-- current round number
-- current phase end timestamp
-- seat roster
-- hidden seat identity: human or AI
-- seat status: alive or spectator
-- chat message timeline
-- current-round votes
-- tied-seat list when relevant
-- elimination order
+每个房间至少需要维护：
 
-## AI Behavior Constraints
+- 房间配置
+- 当前房间状态
+- 当前轮次
+- 当前阶段结束时间戳
+- 席位列表
+- 每个席位的隐藏身份：真人或 AI
+- 每个席位的状态：存活或旁观
+- 聊天消息流
+- 当前轮投票记录
+- 平票席位列表
+- 淘汰顺序
 
-The first version should wrap AI participation in game-specific rules instead of allowing unrestricted model output.
+## 八、AI 行为约束
 
-### AI goals
+第一版里的 AI 不应直接以“裸模型”方式参与，而应受到游戏规则层的行为约束。
 
-- avoid being identified as AI
-- survive until the endgame when possible
-- nudge human suspicion toward other seats
+### 8.1 AI 目标
 
-If 2 AI are present, they may indirectly protect each other, but should not behave as an obvious pair.
+- 隐藏自己是 AI
+- 尽可能活到终局
+- 引导真人怀疑其他席位
 
-### Style variation
+如果场上有 2 个 AI，它们可以在策略上间接保护彼此，但不应表现得像明显结盟。
 
-Each AI should be assigned a light conversational style, such as:
+### 8.2 发言风格变化
 
-- cautious observer
-- active questioner
-- analytical summarizer
-- casual social speaker
+每个 AI 应分配一个轻量风格，例如：
 
-These styles should affect tone and cadence, not game permissions.
+- 谨慎观察型
+- 主动追问型
+- 逻辑总结型
+- 轻松社交型
 
-### Frequency constraints
+这些风格只影响语气和节奏，不改变权限和规则。
 
-- minimum interval between messages
-- maximum number of messages per round
-- no rapid multi-message spam
-- limited end-of-phase catch-up behavior
+### 8.3 发言频率限制
 
-### Length constraints
+- 两次发言之间应有最小间隔
+- 每轮发言次数应有上限
+- 不能极短时间内连续刷屏
+- 临近阶段结束时允许少量补充，但不能集中爆发
 
-- messages should usually be short to medium length
-- avoid essay-style output
-- avoid overly formal structure
+### 8.4 发言长度限制
 
-### Knowledge constraints
+- 单条消息以短到中等长度为主
+- 避免连续输出长篇大论
+- 避免明显过于正式或机械化的表达
 
-AI must never:
+### 8.5 信息边界限制
 
-- reveal or admit it is AI
-- refer to itself as a model or assistant
-- act on hidden server state that is not publicly available
-- use knowledge outside the room context
+AI 不得：
 
-AI can only reason from:
+- 承认自己是 AI
+- 用“模型”“助手”等身份自称
+- 根据玩家不可见的服务器内部状态发言
+- 引用房间上下文之外的信息
 
-- visible chat messages
-- visible vote outcomes
-- visible system messages
-- its own hidden role information
+AI 只能基于以下信息进行推理：
 
-### Voting behavior
+- 可见聊天记录
+- 可见投票结果
+- 可见系统提示
+- 自己已知的隐藏身份信息
 
-AI voting should prioritize:
+### 8.6 投票行为
 
-- self-preservation
-- subtle ally protection when 2 AI exist
-- plausible social reasoning
-- variation, so it does not look deterministic
+AI 的投票策略应优先考虑：
 
-### Timing behavior
+- 自保
+- 在双 AI 局中适度保护同伴
+- 给出看起来合理的社交推理依据
+- 保持一定变化，避免显得像固定算法
 
-AI responses should include a human-like delay range for both speaking and voting. They should not reply or vote with perfectly instant machine timing.
+### 8.7 响应时机
 
-## Technical Direction
+AI 的发言和投票都应加入一定程度的人类化延迟，不应表现为完全即时响应。
 
-This document defines product behavior, not final implementation details, but the design implies these requirements:
+## 九、技术方向
 
-- real-time room synchronization across clients
-- authoritative server-side game state
-- server-owned timers and phase transitions
-- deterministic validation for speaking, voting, and state changes
-- AI participation integrated into the same room event model as human players
+这份文档描述的是产品行为，不直接锁死技术实现，但它已经明确要求系统具备以下能力：
 
-Because this project uses a version of Next.js with breaking changes, implementation must follow the local docs in `node_modules/next/dist/docs/` before architecture is finalized.
+- 多客户端实时同步房间状态
+- 服务端权威控制游戏状态
+- 服务端持有计时器和阶段切换逻辑
+- 对发言、投票和状态变更进行确定性校验
+- AI 通过与真人一致的房间事件模型参与游戏
 
-## Out of Scope for v1
+由于本项目使用的是带有破坏性变化的 Next.js 版本，真正开始实现前，必须优先参考本地文档：`node_modules/next/dist/docs/`。
 
-The following are explicitly deferred:
+## 十、第一版暂不包含的内容
 
-- public matchmaking
-- user accounts
-- persistent player profiles
-- rankings and match history
-- voice or video chat
-- room themes, shared prompts, or cooperative tasks
-- spectator chat
-- direct messages
-- advanced disconnect recovery or seat replacement
-- AI difficulty presets
-- replay system
-- moderation or reporting back office
-- native mobile app features beyond responsive web behavior
+以下内容明确延期，不纳入第一版范围：
 
-## Risks and Mitigations
+- 公开匹配
+- 用户账号体系
+- 持久化个人资料
+- 排行榜与战绩
+- 语音或视频聊天
+- 主题模式、公共话题、协作任务
+- 旁观聊天
+- 私聊
+- 复杂断线恢复或席位替补
+- AI 难度档位
+- 对局回放
+- 举报、审核或运营后台
+- 超出响应式网页之外的原生移动端能力
 
-### Risk: free chat can stall
+## 十一、风险与缓解
 
-Without a prompt or task, some rooms may become quiet.
+### 风险 1：自由聊天可能冷场
 
-Mitigation:
+由于第一版不设置公共话题或任务，部分房间可能出现聊天变少的情况。
 
-- use strong system pacing
-- make the countdown highly visible
-- keep post-launch room modes open for future extension
+缓解方式：
 
-### Risk: AI feels too robotic
+- 用强节奏系统提示推动游戏
+- 突出展示倒计时
+- 为后续扩展主题模式预留空间
 
-Mitigation:
+### 风险 2：AI 太像机器
 
-- vary styles
-- cap length
-- cap frequency
-- apply human-like delay
+缓解方式：
 
-### Risk: room deadlock during voting
+- 增加发言风格差异
+- 限制发言长度
+- 限制发言频率
+- 加入人类化延迟
 
-Mitigation:
+### 风险 3：投票阶段容易卡死
 
-- tie-break discussion
-- limited tie-break vote pool
-- final random elimination on repeated tie
+缓解方式：
 
-### Risk: room feels like generic chat instead of a game
+- 增加平票加赛发言
+- 重投范围只限定在平票者之间
+- 重投仍平票时随机淘汰
 
-Mitigation:
+### 风险 4：产品看起来像普通聊天室而不是游戏
 
-- visible phase structure
-- constant timer presence
-- strong system event styling
-- seat-based identity instead of profile identity
+缓解方式：
 
-## Acceptance Criteria for v1
+- 明确阶段切换
+- 倒计时常驻显示
+- 强化系统事件表现
+- 用席位身份替代账号身份
 
-The design is satisfied when:
+## 十二、第一版验收标准
 
-1. A host can create a private invite-code room with default game settings.
-2. Players can join and see seat identities as avatar color plus seat number only.
-3. The room can move through waiting, discussion, voting, tie-break, elimination, and finished states correctly.
-4. Phase countdowns are synchronized and visible in real time.
-5. Eliminated players can spectate but cannot speak or vote.
-6. AI identity remains hidden until the final results screen.
-7. The game ends immediately at 3 surviving seats, unless all AI have already been eliminated earlier.
-8. Final results reveal winner, AI seats, survivors, and elimination order.
+当以下条件全部成立时，可认为这份设计被正确实现：
 
-## Next Step
+1. 房主可以用默认配置创建一个私密邀请码房间。
+2. 玩家加入后，只能看到“头像颜色 + 编号”的席位身份。
+3. 房间可以正确流转经过等待、讨论、投票、平票加赛、淘汰结算和最终结算。
+4. 所有活跃阶段的倒计时都能实时同步并持续可见。
+5. 被淘汰玩家可以旁观，但不能发言和投票。
+6. AI 身份在最终结算前始终隐藏。
+7. 当场上剩下 3 名存活者时，若仍有 AI 存活，则游戏立即结束并判定 AI 获胜；若 AI 更早已全部出局，则人类获胜。
+8. 最终结算页会展示胜负结果、AI 身份、存活者和淘汰顺序。
 
-After the user reviews this spec, the next step is to write an implementation plan for the first playable version.
+## 十三、下一步
+
+在用户审阅并确认这份中文设计文档后，下一步是为第一版可玩版本编写 implementation plan。
