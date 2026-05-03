@@ -29,7 +29,11 @@ export class RoomBroadcast<T> {
     }
 
     for (const listener of listeners) {
-      listener(payload);
+      try {
+        listener(payload);
+      } catch {
+        // Keep broadcasting even if one subscriber is stale or broken.
+      }
     }
   }
 }

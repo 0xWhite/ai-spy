@@ -19,7 +19,8 @@ export async function POST(
     return Response.json(startRoomAction(code));
   } catch (error) {
     if (error instanceof RoomStoreError) {
-      return Response.json({ error: error.code }, { status: 404 });
+      const status = error.code === "ROOM_NOT_FOUND" ? 404 : 409;
+      return Response.json({ error: error.code }, { status });
     }
 
     throw error;

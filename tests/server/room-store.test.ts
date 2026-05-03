@@ -1,4 +1,5 @@
-import { InMemoryRoomStore } from "@/lib/server/room-store";
+import { startRoomAction } from "@/lib/server/room-actions";
+import { InMemoryRoomStore, RoomStoreError } from "@/lib/server/room-store";
 
 describe("room store", () => {
   it("createRoom returns an initial waiting snapshot with a 6-character code", () => {
@@ -14,6 +15,13 @@ describe("room store", () => {
     expect(room.code).toMatch(/^[A-Z]{6}$/);
     expect(room.phase).toBe("waiting");
     expect(room.hostSeatId).toBe("seat-1");
+    expect(room.seats.find((seat) => seat.id === "seat-1")).toMatchObject({
+      connected: true,
+      isHost: true,
+      role: "human",
+    });
+    expect(room.seats.filter((seat) => seat.role === "ai")).toHaveLength(1);
+    expect(room.seats.find((seat) => seat.id === "seat-2")?.role).toBe("ai");
   });
 
   it("broadcasts to room subscribers when a player joins", () => {
@@ -36,5 +44,92 @@ describe("room store", () => {
     );
 
     unsubscribe();
+  });
+
+  it("does not allow external room mutations to corrupt stored state", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    room.seats[0].connected = false;
+    room.messages.push({
+      id: "mutated",
+      kind: "system",
+      text: "mutated",
+      createdAt: 123,
+    });
+
+    const storedRoom = store.getRoom(room.code);
+
+    expect(storedRoom?.seats[0].connected).toBe(true);
+    expect(storedRoom?.messages).toEqual([]);
+  });
+
+  it("does not let subscriber mutations leak back into the store", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    const unsubscribe = store.subscribe(room.code, (snapshot) => {
+      snapshot.seats[1].connected = false;
+      snapshot.messages.push({
+        id: "listener-mutation",
+        kind: "system",
+        text: "listener mutation",
+        createdAt: 456,
+      });
+    });
+
+    store.joinRoom(room.code);
+
+    const storedRoom = store.getRoom(room.code);
+
+    expect(storedRoom?.seats[1].connected).toBe(true);
+    expect(storedRoom?.messages).toEqual([]);
+
+    unsubscribe();
+  });
+
+  it("isolates listener failures while still notifying later listeners", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+    const healthyListener = vi.fn();
+
+    store.subscribe(room.code, () => {
+      throw new Error("listener failed");
+    });
+    store.subscribe(room.code, healthyListener);
+
+    expect(() => store.joinRoom(room.code)).not.toThrow();
+    expect(healthyListener).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects starting a room that is no longer waiting", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    startRoomAction(room.code, 1_700_000_000_000, store);
+
+    expect(() => startRoomAction(room.code, 1_700_000_000_001, store)).toThrow(
+      new RoomStoreError("ROOM_NOT_WAITING"),
+    );
   });
 });

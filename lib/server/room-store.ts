@@ -16,10 +16,52 @@ export interface RoomSnapshot extends Omit<RoomState, "phase"> {
 export type CreateRoomInput = Omit<BuildInitialRoomStateInput, "hostSeatId">;
 
 export class RoomStoreError extends Error {
-  constructor(public readonly code: "ROOM_NOT_FOUND" | "ROOM_FULL") {
+  constructor(
+    public readonly code:
+      | "ROOM_NOT_FOUND"
+      | "ROOM_FULL"
+      | "ROOM_NOT_WAITING",
+  ) {
     super(code);
     this.name = "RoomStoreError";
   }
+}
+
+function cloneRoomSnapshot(room: RoomSnapshot) {
+  return structuredClone(room);
+}
+
+function ensureHostSeatIsHuman(room: RoomState) {
+  const hostSeat = room.seats.find((seat) => seat.id === room.hostSeatId);
+  if (!hostSeat || hostSeat.role === "human") {
+    return room;
+  }
+
+  const firstHumanSeat = room.seats.find((seat) => seat.role === "human");
+  if (!firstHumanSeat) {
+    return room;
+  }
+
+  return {
+    ...room,
+    seats: room.seats.map((seat) => {
+      if (seat.id === hostSeat.id) {
+        return {
+          ...seat,
+          role: "human" as const,
+        };
+      }
+
+      if (seat.id === firstHumanSeat.id) {
+        return {
+          ...seat,
+          role: "ai" as const,
+        };
+      }
+
+      return seat;
+    }),
+  };
 }
 
 function normalizeRoomCode(code: string) {
@@ -48,36 +90,40 @@ export class InMemoryRoomStore {
 
   createRoom(input: CreateRoomInput) {
     const code = generateRoomCode(new Set(this.rooms.keys()));
-    const room = buildInitialRoomState({
-      ...input,
-      hostSeatId: HOST_SEAT_ID,
-    });
+    const room = ensureHostSeatIsHuman(
+      buildInitialRoomState({
+        ...input,
+        hostSeatId: HOST_SEAT_ID,
+      }),
+    );
     const snapshot: RoomSnapshot = {
       code,
       ...room,
       phase: "waiting",
     };
 
-    this.rooms.set(code, snapshot);
+    this.rooms.set(code, cloneRoomSnapshot(snapshot));
 
-    return snapshot;
+    return cloneRoomSnapshot(snapshot);
   }
 
   getRoom(code: string) {
-    return this.rooms.get(normalizeRoomCode(code));
+    const room = this.rooms.get(normalizeRoomCode(code));
+    return room ? cloneRoomSnapshot(room) : undefined;
   }
 
   saveRoom(room: RoomSnapshot) {
     const code = normalizeRoomCode(room.code);
-    const snapshot = {
+    const snapshot: RoomSnapshot = {
       ...room,
       code,
     };
+    const storedSnapshot = cloneRoomSnapshot(snapshot);
 
-    this.rooms.set(code, snapshot);
-    this.broadcast.emit(code, snapshot);
+    this.rooms.set(code, storedSnapshot);
+    this.broadcast.emit(code, cloneRoomSnapshot(storedSnapshot));
 
-    return snapshot;
+    return cloneRoomSnapshot(storedSnapshot);
   }
 
   joinRoom(code: string) {
@@ -100,7 +146,9 @@ export class InMemoryRoomStore {
   }
 
   subscribe(code: string, listener: (room: RoomSnapshot) => void) {
-    return this.broadcast.subscribe(normalizeRoomCode(code), listener);
+    return this.broadcast.subscribe(normalizeRoomCode(code), (room) => {
+      listener(cloneRoomSnapshot(room));
+    });
   }
 }
 
