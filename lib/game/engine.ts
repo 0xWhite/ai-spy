@@ -62,6 +62,17 @@ function getValidVoteTargetSeatIds(room: RoomState) {
   return getAliveSeatIdSet(room.seats);
 }
 
+function getSortedAliveSeatIds(room: RoomState) {
+  return [...getAliveSeatIdSet(room.seats)].sort();
+}
+
+function getDeterministicTiebreakEliminationSeatId(room: RoomState) {
+  const candidateSeatIds =
+    room.tieSeatIds.length > 0 ? [...room.tieSeatIds].sort() : getSortedAliveSeatIds(room);
+
+  return candidateSeatIds[0];
+}
+
 function countVotes(votes: VoteMap, validSeatIds: Set<string>) {
   const tallies = new Map<string, number>();
 
@@ -190,11 +201,12 @@ export function closeVotingPhase(room: RoomState, now: number): RoomState {
   const tallies = countVotes(room.votes, getValidVoteTargetSeatIds(room));
 
   if (tallies.size === 0) {
-    return {
-      ...room,
-      votes: {},
-      phaseEndsAt: null,
-    };
+    if (room.phase === "tiebreak_voting") {
+      const targetSeatId = getDeterministicTiebreakEliminationSeatId(room);
+      return targetSeatId ? eliminateSeat(room, targetSeatId) : room;
+    }
+
+    return enterTieBreakFromVotes(room, getSortedAliveSeatIds(room), now);
   }
 
   let topVotes = 0;

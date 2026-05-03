@@ -164,7 +164,7 @@ describe("room store", () => {
     });
   });
 
-  it("settles zero-vote timeout without rescheduling an immediate loop", async () => {
+  it("settles zero-vote timeout into tiebreak discussion without rescheduling an immediate loop", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-03T00:00:00.000Z"));
 
@@ -191,8 +191,17 @@ describe("room store", () => {
 
     const settledRoom = store.getRoom(room.code);
 
-    expect(settledRoom?.phase).toBe("voting");
-    expect(settledRoom?.phaseEndsAt).toBeNull();
+    expect(settledRoom?.phase).toBe("tiebreak_discussion");
+    expect(settledRoom?.tieSeatIds).toEqual([
+      "seat-1",
+      "seat-2",
+      "seat-3",
+      "seat-4",
+      "seat-5",
+      "seat-6",
+      "seat-7",
+    ]);
+    expect(settledRoom?.phaseEndsAt).toBe(Date.now() + 50_000);
     expect(listener).toHaveBeenCalledTimes(2);
   });
 });

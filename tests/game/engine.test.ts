@@ -205,29 +205,51 @@ describe("game engine", () => {
     },
   );
 
-  it.each([
-    ["voting", []],
-    ["tiebreak_voting", ["seat-3", "seat-4"]],
-  ] as const)(
-    "settles %s timeout with zero valid votes without leaving an active timer",
-    (phase, tieSeatIds) => {
-      const room = {
-        ...buildInitialRoomState({
-          hostSeatId: "seat-2",
-        }),
-        phase,
-        tieSeatIds,
-        phaseEndsAt: 1_700_000_000_000,
-        votes: {},
-      };
+  it("resolves voting timeout with zero valid votes into a full tie-break discussion", () => {
+    const now = 1_700_000_000_000;
+    const room = {
+      ...buildInitialRoomState({
+        hostSeatId: "seat-2",
+      }),
+      phase: "voting" as const,
+      phaseEndsAt: now,
+      votes: {},
+    };
 
-      const nextRoom = advancePhaseFromTimeout(room, 1_700_000_000_000);
+    const nextRoom = advancePhaseFromTimeout(room, now);
 
-      expect(nextRoom.phase).toBe(phase);
-      expect(nextRoom.votes).toEqual({});
-      expect(nextRoom.phaseEndsAt).toBeNull();
-    },
-  );
+    expect(nextRoom.phase).toBe("tiebreak_discussion");
+    expect(nextRoom.tieSeatIds).toEqual([
+      "seat-1",
+      "seat-2",
+      "seat-3",
+      "seat-4",
+      "seat-5",
+      "seat-6",
+      "seat-7",
+    ]);
+    expect(nextRoom.phaseEndsAt).toBe(now + 60_000);
+  });
+
+  it("resolves tiebreak voting timeout with zero valid votes by eliminating a deterministic tied seat", () => {
+    const now = 1_700_000_000_000;
+    const room = {
+      ...buildInitialRoomState({
+        hostSeatId: "seat-2",
+      }),
+      phase: "tiebreak_voting" as const,
+      tieSeatIds: ["seat-4", "seat-3"],
+      phaseEndsAt: now,
+      votes: {},
+    };
+
+    const nextRoom = advancePhaseFromTimeout(room, now);
+
+    expect(nextRoom.phase).toBe("eliminated_reveal");
+    expect(nextRoom.eliminatedSeatIds).toEqual(["seat-3"]);
+    expect(nextRoom.tieSeatIds).toEqual([]);
+    expect(nextRoom.phaseEndsAt).toBeNull();
+  });
 
   it("enters tie-break discussion with sorted tieSeatIds for a top-vote tie", () => {
     const now = 1_700_000_000_000;
