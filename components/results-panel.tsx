@@ -1,9 +1,10 @@
-import type { RoomResult, SeatState } from "@/lib/game/types";
+import type { RoomResult } from "@/lib/game/types";
+import type { RevealedClientSeatState } from "@/lib/server/room-store";
 import { formatSeatLabel } from "@/lib/utils/format";
 
 type ResultsPanelProps = {
   result: RoomResult | null;
-  seats: SeatState[];
+  seats: RevealedClientSeatState[];
   eliminatedSeatIds: string[];
 };
 

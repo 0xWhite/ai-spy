@@ -1,5 +1,10 @@
 import { advancePhaseFromTimeout, buildInitialRoomState } from "@/lib/game/engine";
-import type { BuildInitialRoomStateInput, RoomState, SeatState } from "@/lib/game/types";
+import type {
+  BuildInitialRoomStateInput,
+  RoomResult,
+  RoomState,
+  SeatState,
+} from "@/lib/game/types";
 import { RoomBroadcast } from "@/lib/server/room-broadcast";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -13,12 +18,18 @@ export interface RoomSnapshot extends Omit<RoomState, "phase"> {
   phase: RoomSnapshotPhase;
 }
 
-export type ClientSeatState = Omit<SeatState, "role"> & {
-  role?: SeatState["role"];
-};
+export type HiddenClientSeatState = Omit<SeatState, "role">;
+export type RevealedClientSeatState = SeatState;
+export type ClientSeatState = HiddenClientSeatState | RevealedClientSeatState;
 
 export interface ClientRoomSnapshot extends Omit<RoomSnapshot, "seats"> {
   seats: ClientSeatState[];
+}
+
+export interface RevealedClientRoomSnapshot extends ClientRoomSnapshot {
+  phase: "finished";
+  result: RoomResult;
+  seats: RevealedClientSeatState[];
 }
 
 export type CreateRoomInput = Omit<BuildInitialRoomStateInput, "hostSeatId">;
@@ -58,6 +69,16 @@ export function toClientRoomSnapshot(room: RoomSnapshot): ClientRoomSnapshot {
       };
     }),
   };
+}
+
+export function hasRevealedClientRoles(
+  room: ClientRoomSnapshot,
+): room is RevealedClientRoomSnapshot {
+  return (
+    room.phase === "finished" &&
+    room.result !== null &&
+    room.seats.every((seat) => "role" in seat)
+  );
 }
 
 function ensureHostSeatIsHuman(room: RoomState) {

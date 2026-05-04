@@ -1,9 +1,10 @@
-import type { PlayerRoomMessage, SeatState } from "@/lib/game/types";
+import type { PlayerRoomMessage } from "@/lib/game/types";
+import type { ClientSeatState } from "@/lib/server/room-store";
 import { formatSeatLabel, formatMessageTime } from "@/lib/utils/format";
 
 type ChatMessageProps = {
   message: PlayerRoomMessage;
-  seat?: SeatState;
+  seat?: ClientSeatState;
   isSelf?: boolean;
 };
 

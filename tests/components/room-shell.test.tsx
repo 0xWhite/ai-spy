@@ -1,23 +1,29 @@
 import { render, screen } from "@testing-library/react";
 import { startGame, buildInitialRoomState } from "@/lib/game/engine";
 import { RoomShell } from "@/components/room-shell";
-import type { RoomSnapshot } from "@/lib/server/room-store";
+import {
+  toClientRoomSnapshot,
+  type ClientRoomSnapshot,
+  type RoomSnapshot,
+} from "@/lib/server/room-store";
 
-function buildWaitingRoom(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
-  return {
+function buildWaitingRoom(
+  overrides: Partial<RoomSnapshot> = {},
+): ClientRoomSnapshot {
+  return toClientRoomSnapshot({
     code: "ABCDEF",
     ...buildInitialRoomState({
       hostSeatId: "seat-1",
     }),
     phase: "waiting",
     ...overrides,
-  };
+  });
 }
 
-function buildDiscussionRoom(): RoomSnapshot {
+function buildDiscussionRoom(): ClientRoomSnapshot {
   const now = 1_700_000_000_000;
 
-  return {
+  return toClientRoomSnapshot({
     code: "ABCDEF",
     ...startGame(
       buildInitialRoomState({
@@ -40,11 +46,13 @@ function buildDiscussionRoom(): RoomSnapshot {
         createdAt: now + 1_000,
       },
     ],
-  };
+  });
 }
 
-function buildFinishedRoom(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot {
-  return {
+function buildFinishedRoom(
+  overrides: Partial<RoomSnapshot> = {},
+): ClientRoomSnapshot {
+  return toClientRoomSnapshot({
     code: "ABCDEF",
     ...buildInitialRoomState({
       hostSeatId: "seat-1",
@@ -52,7 +60,7 @@ function buildFinishedRoom(overrides: Partial<RoomSnapshot> = {}): RoomSnapshot 
     phase: "finished",
     result: { winner: "human" },
     ...overrides,
-  };
+  });
 }
 
 describe("RoomShell", () => {

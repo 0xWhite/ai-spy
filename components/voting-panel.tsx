@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type { SeatState } from "@/lib/game/types";
+import type { ClientSeatState } from "@/lib/server/room-store";
 import { formatSeatLabel } from "@/lib/utils/format";
 
 type VotingPanelProps = {
-  seats: SeatState[];
+  seats: ClientSeatState[];
   selfSeatId: string;
   selectedSeatId?: string;
   tieSeatIds?: string[];

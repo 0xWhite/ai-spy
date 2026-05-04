@@ -1,4 +1,7 @@
-import type { ClientRoomSnapshot } from "@/lib/server/room-store";
+import {
+  hasRevealedClientRoles,
+  type ClientRoomSnapshot,
+} from "@/lib/server/room-store";
 import { ChatMessage } from "@/components/chat-message";
 import { CountdownChip } from "@/components/countdown-chip";
 import { MessageComposer } from "@/components/message-composer";
@@ -38,7 +41,7 @@ export function RoomShell({
     );
   }
 
-  if (room.phase === "finished" && room.result) {
+  if (hasRevealedClientRoles(room)) {
     return (
       <ResultsPanel
         eliminatedSeatIds={room.eliminatedSeatIds}

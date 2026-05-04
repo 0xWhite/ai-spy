@@ -1,4 +1,8 @@
-import { roomStore, toClientRoomSnapshot, type RoomSnapshot } from "@/lib/server/room-store";
+import {
+  roomStore,
+  toClientRoomSnapshot,
+  type ClientRoomSnapshot,
+} from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +31,7 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const sendSnapshot = (snapshot: RoomSnapshot) => {
+      const sendSnapshot = (snapshot: ClientRoomSnapshot) => {
         controller.enqueue(encoder.encode(toSsePayload(snapshot)));
       };
 

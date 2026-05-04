@@ -1,8 +1,8 @@
-import type { SeatState } from "@/lib/game/types";
+import type { ClientSeatState } from "@/lib/server/room-store";
 import { formatSeatLabel } from "@/lib/utils/format";
 
 type SeatBadgeProps = {
-  seat: SeatState;
+  seat: ClientSeatState;
   highlight?: boolean;
 };
 

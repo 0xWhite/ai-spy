@@ -1,9 +1,9 @@
-import type { SeatState } from "@/lib/game/types";
 import { SeatBadge } from "@/components/seat-badge";
+import type { ClientSeatState } from "@/lib/server/room-store";
 
 type WaitingRoomPanelProps = {
   code: string;
-  seats: SeatState[];
+  seats: ClientSeatState[];
   selfSeatId: string | null;
   onStart?: () => Promise<void> | void;
   isStarting?: boolean;
