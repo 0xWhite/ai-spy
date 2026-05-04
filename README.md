@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Spy MVP
 
-## Getting Started
+一个基于 Next.js 16 App Router 的 AI 卧底聊天室 MVP。房主建房后，玩家可以通过邀请码加入，同一房间内的 AI 会在服务端参与讨论和投票。
 
-First, run the development server:
+## Run Locally
+
+1. Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Optional: configure an OpenAI-compatible model provider:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+cp .env.example .env.local
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Available variables:
 
-## Learn More
+- `AI_BASE_URL`: OpenAI-compatible API base URL
+- `AI_API_KEY`: API key for the model gateway
+- `AI_MODEL`: model name used for room AI turns
 
-To learn more about Next.js, take a look at the following resources:
+If these variables are missing, the app automatically falls back to the built-in mock AI provider so the full MVP loop still runs locally.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. Start the development server:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+```bash
+pnpm dev
+```
 
-## Deploy on Vercel
+Open [http://localhost:3000](http://localhost:3000).
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Verification
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Core verification commands for this MVP:
+
+```bash
+pnpm test
+pnpm lint
+pnpm exec tsc --noEmit
+pnpm build
+```

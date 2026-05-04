@@ -175,7 +175,7 @@ describe("room store", () => {
     const store = new InMemoryRoomStore();
     const room = store.createRoom({
       totalSeats: 7,
-      aiCount: 1,
+      aiCount: 0,
       roundOneSeconds: 300,
       roundSeconds: 180,
       voteSeconds: 30,
@@ -207,6 +207,76 @@ describe("room store", () => {
     ]);
     expect(settledRoom?.phaseEndsAt).toBe(Date.now() + 50_000);
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it("runs AI discussion turns once per phase without recursive resaves", async () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    startRoomAction(room.code, 1_700_000_000_000, store);
+
+    await vi.waitFor(() => {
+      expect(
+        store
+          .getRoom(room.code)
+          ?.messages.filter((message) => message.kind === "player"),
+      ).toHaveLength(1);
+    });
+
+    const afterAiTurn = store.getRoom(room.code);
+
+    expect(afterAiTurn?.messages).toContainEqual(
+      expect.objectContaining({
+        kind: "player",
+        seatId: "seat-2",
+      }),
+    );
+
+    store.saveRoom(afterAiTurn!);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(
+      store
+        .getRoom(room.code)
+        ?.messages.filter((message) => message.kind === "player"),
+    ).toHaveLength(1);
+  });
+
+  it("runs AI voting turns once and records AI votes", async () => {
+    const store = new InMemoryRoomStore();
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+      voteSeconds: 60,
+    });
+
+    store.saveRoom({
+      ...room,
+      phase: "voting",
+      phaseEndsAt: Date.now() + 60_000,
+    });
+
+    await vi.waitFor(() => {
+      expect(store.getRoom(room.code)?.votes).toMatchObject({
+        "seat-2": expect.any(String),
+      });
+    });
+
+    const afterAiVote = store.getRoom(room.code);
+
+    store.saveRoom(afterAiVote!);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(store.getRoom(room.code)?.votes).toEqual(afterAiVote?.votes);
   });
 
   it("redacts hidden seat roles before the game result exists", () => {

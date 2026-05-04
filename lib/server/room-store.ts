@@ -5,6 +5,7 @@ import type {
   RoomState,
   SeatState,
 } from "@/lib/game/types";
+import { aiRuntime } from "@/lib/server/ai/runtime";
 import { RoomBroadcast } from "@/lib/server/room-broadcast";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -134,6 +135,7 @@ function generateRoomCode(existingCodes: Set<string>) {
 export class InMemoryRoomStore {
   private rooms = new Map<string, RoomSnapshot>();
   private roomTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pendingAiRooms = new Set<string>();
 
   constructor(
     private readonly broadcast = new RoomBroadcast<RoomSnapshot>(),
@@ -174,10 +176,13 @@ export class InMemoryRoomStore {
         Date.now(),
       );
 
-      this.saveRoom({
-        ...advancedRoom,
-        code: currentRoom.code,
-      });
+      this.saveRoom(
+        {
+          ...advancedRoom,
+          code: currentRoom.code,
+        },
+        { source: "timer" },
+      );
     }, delay);
 
     this.roomTimers.set(room.code, timer);
@@ -207,7 +212,40 @@ export class InMemoryRoomStore {
     return room ? cloneRoomSnapshot(room) : undefined;
   }
 
-  saveRoom(room: RoomSnapshot) {
+  private shouldRunAi(room: RoomSnapshot) {
+    return (
+      room.phase === "discussion" ||
+      room.phase === "tiebreak_discussion" ||
+      room.phase === "voting" ||
+      room.phase === "tiebreak_voting"
+    );
+  }
+
+  private scheduleAiTurn(code: string) {
+    if (this.pendingAiRooms.has(code)) {
+      return;
+    }
+
+    this.pendingAiRooms.add(code);
+
+    queueMicrotask(async () => {
+      try {
+        const currentRoom = this.rooms.get(code);
+        if (!currentRoom || !this.shouldRunAi(currentRoom)) {
+          return;
+        }
+
+        const aiRoom = await aiRuntime.run(currentRoom as RoomSnapshot & RoomState);
+        if (aiRoom !== currentRoom) {
+          this.saveRoom(aiRoom, { source: "ai" });
+        }
+      } finally {
+        this.pendingAiRooms.delete(code);
+      }
+    });
+  }
+
+  saveRoom(room: RoomSnapshot, options?: { source?: "ai" | "timer" | "user" }) {
     const code = normalizeRoomCode(room.code);
     const snapshot: RoomSnapshot = {
       ...room,
@@ -218,6 +256,9 @@ export class InMemoryRoomStore {
     this.rooms.set(code, storedSnapshot);
     this.scheduleRoomTimer(storedSnapshot);
     this.broadcast.emit(code, cloneRoomSnapshot(storedSnapshot));
+    if (options?.source !== "ai" && this.shouldRunAi(storedSnapshot)) {
+      this.scheduleAiTurn(code);
+    }
 
     return cloneRoomSnapshot(storedSnapshot);
   }
