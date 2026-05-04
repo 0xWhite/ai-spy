@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
 const { getRoomMock, subscribeMock } = vi.hoisted(() => ({
   getRoomMock: vi.fn(),
   subscribeMock: vi.fn(),

@@ -6,6 +6,19 @@ interface OpenAiCompatibleConfig {
   model: string;
 }
 
+type OpenAiCompatibleConfigStatus =
+  | {
+      kind: "absent";
+    }
+  | {
+      kind: "misconfigured";
+      missing: Array<keyof Pick<NodeJS.ProcessEnv, "AI_BASE_URL" | "AI_API_KEY" | "AI_MODEL">>;
+    }
+  | {
+      kind: "configured";
+      config: OpenAiCompatibleConfig;
+    };
+
 interface ChatCompletionResponse {
   choices?: Array<{
     message?: {
@@ -56,10 +69,47 @@ async function requestCompletion(
   return data.choices?.[0]?.message?.content?.trim() ?? null;
 }
 
+export function getOpenAiCompatibleConfigStatus(
+  env: NodeJS.ProcessEnv = process.env,
+): OpenAiCompatibleConfigStatus {
+  const fields = [
+    ["AI_BASE_URL", env.AI_BASE_URL],
+    ["AI_API_KEY", env.AI_API_KEY],
+    ["AI_MODEL", env.AI_MODEL],
+  ] as const;
+  const configuredFields = fields.filter(([, value]) => Boolean(value));
+
+  if (configuredFields.length === 0) {
+    return {
+      kind: "absent",
+    };
+  }
+
+  const missing = fields
+    .filter(([, value]) => !value)
+    .map(([field]) => field);
+
+  if (missing.length > 0) {
+    return {
+      kind: "misconfigured",
+      missing,
+    };
+  }
+
+  return {
+    kind: "configured",
+    config: {
+      apiKey: env.AI_API_KEY!,
+      baseUrl: env.AI_BASE_URL!,
+      model: env.AI_MODEL!,
+    },
+  };
+}
+
 export function hasOpenAiCompatibleConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): env is NodeJS.ProcessEnv & OpenAiCompatibleConfig {
-  return Boolean(env.AI_BASE_URL && env.AI_API_KEY && env.AI_MODEL);
+  return getOpenAiCompatibleConfigStatus(env).kind === "configured";
 }
 
 export function createOpenAiCompatibleProvider(

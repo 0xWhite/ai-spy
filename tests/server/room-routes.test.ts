@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { POST as postMessage } from "@/app/api/rooms/[code]/message/route";
 import { POST as postVote } from "@/app/api/rooms/[code]/vote/route";
 

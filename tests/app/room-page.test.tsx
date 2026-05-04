@@ -1,3 +1,4 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import RoomPage from "@/app/room/[code]/page";
 import type { RoomSnapshot } from "@/lib/server/room-store";
 

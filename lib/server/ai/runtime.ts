@@ -3,9 +3,9 @@ import type { RoomState, SeatState } from "@/lib/game/types";
 import { mockAiProvider } from "@/lib/server/ai/mock-provider";
 import {
   createOpenAiCompatibleProvider,
-  hasOpenAiCompatibleConfig,
+  getOpenAiCompatibleConfigStatus,
 } from "@/lib/server/ai/openai-compatible-provider";
-import type { AiProvider } from "@/lib/server/ai/provider";
+import type { AiProvider, AiTurnContext } from "@/lib/server/ai/provider";
 
 type AiManagedRoom = RoomState & {
   code: string;
@@ -17,10 +17,33 @@ type ActivePhase =
   | "voting"
   | "tiebreak_voting";
 
-interface PhaseRecord {
+export interface AiPhaseState {
   key: string;
-  messageSeatIds: Set<string>;
-  voteSeatIds: Set<string>;
+  messageSeatIds: string[];
+  voteSeatIds: string[];
+}
+
+export interface AiRunResult {
+  phaseState: AiPhaseState;
+  room: AiManagedRoom;
+}
+
+export type AiDiagnosticReporter = (message: string, detail?: unknown) => void;
+
+interface CreateRuntimeAiProviderOptions {
+  env?: NodeJS.ProcessEnv;
+  fallbackProvider?: AiProvider;
+  primaryProvider?: AiProvider;
+  reportIssue?: AiDiagnosticReporter;
+}
+
+function defaultReportIssue(message: string, detail?: unknown) {
+  if (detail === undefined) {
+    console.warn(`[ai-runtime] ${message}`);
+    return;
+  }
+
+  console.warn(`[ai-runtime] ${message}`, detail);
 }
 
 function isAiPhase(phase: RoomState["phase"]): phase is ActivePhase {
@@ -41,46 +64,122 @@ function createPhaseKey(room: AiManagedRoom) {
   ].join("|");
 }
 
-function createPhaseRecord(key: string): PhaseRecord {
+function createEmptyPhaseState(key: string): AiPhaseState {
   return {
     key,
-    messageSeatIds: new Set(),
-    voteSeatIds: new Set(),
+    messageSeatIds: [],
+    voteSeatIds: [],
   };
 }
 
-function createDefaultProvider() {
-  if (hasOpenAiCompatibleConfig()) {
-    return createOpenAiCompatibleProvider();
+function normalizePhaseState(
+  room: AiManagedRoom,
+  phaseState?: AiPhaseState,
+) {
+  const key = createPhaseKey(room);
+  const nextPhaseState =
+    phaseState?.key === key ? phaseState : createEmptyPhaseState(key);
+
+  return {
+    key,
+    messageSeatIds: new Set(nextPhaseState.messageSeatIds),
+    voteSeatIds: new Set(nextPhaseState.voteSeatIds),
+  };
+}
+
+function serializePhaseState(state: {
+  key: string;
+  messageSeatIds: Set<string>;
+  voteSeatIds: Set<string>;
+}): AiPhaseState {
+  return {
+    key: state.key,
+    messageSeatIds: [...state.messageSeatIds].sort(),
+    voteSeatIds: [...state.voteSeatIds].sort(),
+  };
+}
+
+async function callWithFallback<T>(
+  context: AiTurnContext,
+  primaryCall: (provider: AiProvider) => Promise<T>,
+  options: {
+    action: "generateMessage" | "chooseVote";
+    fallbackProvider: AiProvider;
+    primaryProvider: AiProvider;
+    reportIssue: AiDiagnosticReporter;
+  },
+) {
+  try {
+    return await primaryCall(options.primaryProvider);
+  } catch (error) {
+    options.reportIssue(
+      `OpenAI-compatible ${options.action} failed; falling back to mock AI.`,
+      error,
+    );
+    return primaryCall(options.fallbackProvider);
+  }
+}
+
+export function createRuntimeAiProvider(
+  options: CreateRuntimeAiProviderOptions = {},
+): AiProvider {
+  const env = options.env ?? process.env;
+  const fallbackProvider = options.fallbackProvider ?? mockAiProvider;
+  const reportIssue = options.reportIssue ?? defaultReportIssue;
+  const configStatus = getOpenAiCompatibleConfigStatus(env);
+
+  if (configStatus.kind === "absent") {
+    return fallbackProvider;
   }
 
-  return mockAiProvider;
+  if (configStatus.kind === "misconfigured") {
+    reportIssue(
+      "AI env vars are partially configured; using mock AI instead.",
+      {
+        missing: configStatus.missing,
+      },
+    );
+    return fallbackProvider;
+  }
+
+  const primaryProvider =
+    options.primaryProvider ??
+    createOpenAiCompatibleProvider(configStatus.config);
+
+  return {
+    async generateMessage(context) {
+      return callWithFallback(context, (provider) => provider.generateMessage(context), {
+        action: "generateMessage",
+        fallbackProvider,
+        primaryProvider,
+        reportIssue,
+      });
+    },
+    async chooseVote(context) {
+      return callWithFallback(context, (provider) => provider.chooseVote(context), {
+        action: "chooseVote",
+        fallbackProvider,
+        primaryProvider,
+        reportIssue,
+      });
+    },
+  };
 }
 
 export class AiRuntime {
-  private readonly phaseRecords = new Map<string, PhaseRecord>();
+  constructor(
+    private readonly provider: AiProvider = createRuntimeAiProvider(),
+  ) {}
 
-  constructor(private readonly provider: AiProvider = createDefaultProvider()) {}
-
-  private getPhaseRecord(room: AiManagedRoom) {
-    const key = createPhaseKey(room);
-    const current = this.phaseRecords.get(room.code);
-
-    if (current?.key === key) {
-      return current;
-    }
-
-    const next = createPhaseRecord(key);
-    this.phaseRecords.set(room.code, next);
-    return next;
-  }
-
-  async run(room: AiManagedRoom) {
+  async run(room: AiManagedRoom, phaseState?: AiPhaseState): Promise<AiRunResult> {
     if (!isAiPhase(room.phase)) {
-      return room;
+      return {
+        room,
+        phaseState: createEmptyPhaseState(createPhaseKey(room)),
+      };
     }
 
-    const phaseRecord = this.getPhaseRecord(room);
+    const nextPhaseState = normalizePhaseState(room, phaseState);
     const aiSeats = room.seats.filter(
       (seat) => seat.role === "ai" && seat.status === "alive",
     );
@@ -91,61 +190,60 @@ export class AiRuntime {
       if (
         (nextRoom.phase === "discussion" ||
           nextRoom.phase === "tiebreak_discussion") &&
-        !phaseRecord.messageSeatIds.has(seat.id)
+        !nextPhaseState.messageSeatIds.has(seat.id)
       ) {
-        phaseRecord.messageSeatIds.add(seat.id);
+        nextPhaseState.messageSeatIds.add(seat.id);
         nextRoom = await this.applyMessageTurn(nextRoom, seat);
       }
 
       if (
         (nextRoom.phase === "voting" || nextRoom.phase === "tiebreak_voting") &&
-        !phaseRecord.voteSeatIds.has(seat.id)
+        !nextPhaseState.voteSeatIds.has(seat.id)
       ) {
-        phaseRecord.voteSeatIds.add(seat.id);
+        nextPhaseState.voteSeatIds.add(seat.id);
         nextRoom = await this.applyVoteTurn(nextRoom, seat);
       }
     }
 
-    return nextRoom;
+    return {
+      room: nextRoom,
+      phaseState: serializePhaseState(nextPhaseState),
+    };
   }
 
   private async applyMessageTurn(room: AiManagedRoom, seat: SeatState) {
-    try {
-      const text = await this.provider.generateMessage({
-        room,
-        seat,
-        now: Date.now(),
-      });
+    const text = await this.provider.generateMessage({
+      room,
+      seat,
+      now: Date.now(),
+    });
 
-      if (!text?.trim()) {
-        return room;
-      }
-
-      return {
-        ...appendPlayerMessage(room, {
-          seatId: seat.id,
-          text,
-          now: Date.now(),
-        }),
-        code: room.code,
-      };
-    } catch {
+    if (!text?.trim()) {
       return room;
     }
+
+    return {
+      ...appendPlayerMessage(room, {
+        seatId: seat.id,
+        text,
+        now: Date.now(),
+      }),
+      code: room.code,
+    };
   }
 
   private async applyVoteTurn(room: AiManagedRoom, seat: SeatState) {
+    const targetSeatId = await this.provider.chooseVote({
+      room,
+      seat,
+      now: Date.now(),
+    });
+
+    if (!targetSeatId) {
+      return room;
+    }
+
     try {
-      const targetSeatId = await this.provider.chooseVote({
-        room,
-        seat,
-        now: Date.now(),
-      });
-
-      if (!targetSeatId) {
-        return room;
-      }
-
       return {
         ...castVote(room, {
           voterSeatId: seat.id,

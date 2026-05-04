@@ -5,7 +5,11 @@ import type {
   RoomState,
   SeatState,
 } from "@/lib/game/types";
-import { aiRuntime } from "@/lib/server/ai/runtime";
+import {
+  aiRuntime,
+  type AiPhaseState,
+  type AiRuntime,
+} from "@/lib/server/ai/runtime";
 import { RoomBroadcast } from "@/lib/server/room-broadcast";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -135,10 +139,13 @@ function generateRoomCode(existingCodes: Set<string>) {
 export class InMemoryRoomStore {
   private rooms = new Map<string, RoomSnapshot>();
   private roomTimers = new Map<string, ReturnType<typeof setTimeout>>();
-  private pendingAiRooms = new Set<string>();
+  private roomVersions = new Map<string, number>();
+  private aiPhaseStates = new Map<string, AiPhaseState>();
+  private pendingAiJobs = new Set<string>();
 
   constructor(
     private readonly broadcast = new RoomBroadcast<RoomSnapshot>(),
+    private readonly roomAiRuntime: AiRuntime = aiRuntime,
   ) {}
 
   private clearRoomTimer(code: string) {
@@ -203,6 +210,7 @@ export class InMemoryRoomStore {
     };
 
     this.rooms.set(code, cloneRoomSnapshot(snapshot));
+    this.roomVersions.set(code, 1);
 
     return cloneRoomSnapshot(snapshot);
   }
@@ -221,28 +229,48 @@ export class InMemoryRoomStore {
     );
   }
 
-  private scheduleAiTurn(code: string) {
-    if (this.pendingAiRooms.has(code)) {
+  private scheduleAiTurn(code: string, version: number) {
+    const jobKey = `${code}:${version}`;
+    if (this.pendingAiJobs.has(jobKey)) {
       return;
     }
 
-    this.pendingAiRooms.add(code);
+    this.pendingAiJobs.add(jobKey);
 
-    queueMicrotask(async () => {
-      try {
-        const currentRoom = this.rooms.get(code);
-        if (!currentRoom || !this.shouldRunAi(currentRoom)) {
-          return;
-        }
-
-        const aiRoom = await aiRuntime.run(currentRoom as RoomSnapshot & RoomState);
-        if (aiRoom !== currentRoom) {
-          this.saveRoom(aiRoom, { source: "ai" });
-        }
-      } finally {
-        this.pendingAiRooms.delete(code);
-      }
+    queueMicrotask(() => {
+      void this.runAiTurn(code, version, jobKey);
     });
+  }
+
+  private async runAiTurn(code: string, version: number, jobKey: string) {
+    try {
+      const currentRoom = this.rooms.get(code);
+      if (
+        !currentRoom ||
+        this.roomVersions.get(code) !== version ||
+        !this.shouldRunAi(currentRoom)
+      ) {
+        return;
+      }
+
+      const currentPhaseState = this.aiPhaseStates.get(code);
+      const { room: aiRoom, phaseState } = await this.roomAiRuntime.run(
+        currentRoom as RoomSnapshot & RoomState,
+        currentPhaseState,
+      );
+
+      if (this.roomVersions.get(code) !== version) {
+        return;
+      }
+
+      this.aiPhaseStates.set(code, phaseState);
+
+      if (aiRoom !== currentRoom) {
+        this.saveRoom(aiRoom, { source: "ai" });
+      }
+    } finally {
+      this.pendingAiJobs.delete(jobKey);
+    }
   }
 
   saveRoom(room: RoomSnapshot, options?: { source?: "ai" | "timer" | "user" }) {
@@ -252,12 +280,14 @@ export class InMemoryRoomStore {
       code,
     };
     const storedSnapshot = cloneRoomSnapshot(snapshot);
+    const nextVersion = (this.roomVersions.get(code) ?? 0) + 1;
 
     this.rooms.set(code, storedSnapshot);
+    this.roomVersions.set(code, nextVersion);
     this.scheduleRoomTimer(storedSnapshot);
     this.broadcast.emit(code, cloneRoomSnapshot(storedSnapshot));
     if (options?.source !== "ai" && this.shouldRunAi(storedSnapshot)) {
-      this.scheduleAiTurn(code);
+      this.scheduleAiTurn(code, nextVersion);
     }
 
     return cloneRoomSnapshot(storedSnapshot);

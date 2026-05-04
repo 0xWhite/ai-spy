@@ -1,4 +1,6 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { startRoomAction } from "@/lib/server/room-actions";
+import { AiRuntime } from "@/lib/server/ai/runtime";
 import {
   InMemoryRoomStore,
   RoomStoreError,
@@ -277,6 +279,73 @@ describe("room store", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(store.getRoom(room.code)?.votes).toEqual(afterAiVote?.votes);
+  });
+
+  it("drops stale AI output and still runs AI for a newer phase", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-03T00:00:00.000Z"));
+
+    let resolveDiscussionMessage: ((value: string | null) => void) | null = null;
+    let chooseVoteCalls = 0;
+
+    const store = new InMemoryRoomStore(
+      undefined,
+      new AiRuntime({
+        generateMessage: () =>
+          new Promise((resolve) => {
+            resolveDiscussionMessage = resolve;
+          }),
+        chooseVote: async () => {
+          chooseVoteCalls += 1;
+          return "seat-1";
+        },
+      }),
+    );
+    const room = store.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+      voteSeconds: 60,
+    });
+
+    startRoomAction(room.code, Date.now(), store);
+
+    await vi.waitFor(() => {
+      expect(resolveDiscussionMessage).not.toBeNull();
+    });
+
+    const discussionRoom = store.getRoom(room.code)!;
+    store.saveRoom({
+      ...discussionRoom,
+      phase: "voting",
+      votes: {},
+      phaseEndsAt: Date.now() + 60_000,
+    });
+
+    const discussionResolver = resolveDiscussionMessage!;
+    discussionResolver("过期的讨论发言");
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.waitFor(() => {
+      expect(chooseVoteCalls).toBe(1);
+      expect(store.getRoom(room.code)?.votes).toMatchObject({
+        "seat-2": "seat-1",
+      });
+    });
+
+    const settledRoom = store.getRoom(room.code)!;
+
+    expect(settledRoom.phase).toBe("voting");
+    expect(settledRoom.votes).toMatchObject({
+      "seat-2": "seat-1",
+    });
+    expect(
+      settledRoom.messages.some(
+        (message) =>
+          message.kind === "player" && message.text === "过期的讨论发言",
+      ),
+    ).toBe(false);
   });
 
   it("redacts hidden seat roles before the game result exists", () => {
