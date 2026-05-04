@@ -88,7 +88,7 @@ describe("RoomPage", () => {
     getRoomMock.mockReturnValue(room);
     cookiesMock.mockResolvedValue({
       get: (name: string) =>
-        name === "room-abcdef-seat" ? { value: "seat-4" } : undefined,
+        name === "room-ABCDEF-seat" ? { value: "seat-1" } : undefined,
     });
 
     const result = await RoomPage({
@@ -107,7 +107,7 @@ describe("RoomPage", () => {
             }),
           ],
         }),
-        selfSeatId: "seat-4",
+        selfSeatId: "seat-1",
       }),
     );
   });

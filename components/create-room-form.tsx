@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export type CreateRoomPayload = {
   totalSeats: number;
@@ -13,8 +14,6 @@ export type CreateRoomPayload = {
 type CreateRoomFormProps = {
   onCreate?: (payload: CreateRoomPayload) => Promise<void> | void;
 };
-
-const defaultCreateHandler = async () => {};
 
 function readConfiguredNumber(
   formData: FormData,
@@ -38,9 +37,35 @@ function readConfiguredNumber(
 }
 
 export function CreateRoomForm({
-  onCreate = defaultCreateHandler,
+  onCreate,
 }: CreateRoomFormProps) {
   const [isPending, setIsPending] = useState(false);
+  const router = useRouter();
+
+  async function handleCreate(payload: CreateRoomPayload) {
+    if (onCreate) {
+      await onCreate(payload);
+      return;
+    }
+
+    const response = await fetch("/api/rooms", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`REQUEST_FAILED_${response.status}`);
+    }
+
+    const room = (await response.json()) as {
+      code: string;
+    };
+
+    router.push(`/room/${room.code}`);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -62,7 +87,7 @@ export function CreateRoomForm({
     setIsPending(true);
 
     try {
-      await onCreate({
+      await handleCreate({
         totalSeats,
         aiCount,
         roundOneSeconds: Number(formData.get("roundOneSeconds") ?? 300),

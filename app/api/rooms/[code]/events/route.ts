@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
 import {
   roomStore,
   toClientRoomSnapshot,
@@ -27,6 +29,7 @@ export async function GET(
     return Response.json({ error: "ROOM_NOT_FOUND" }, { status: 404 });
   }
 
+  const seatId = getValidatedBoundSeatId(await cookies(), room);
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -36,10 +39,10 @@ export async function GET(
       };
 
       const unsubscribe = roomStore.subscribe(code, (snapshot) => {
-        sendSnapshot(toClientRoomSnapshot(snapshot));
+        sendSnapshot(toClientRoomSnapshot(snapshot, seatId));
       });
       const latestRoom = roomStore.getRoom(code) ?? room;
-      sendSnapshot(toClientRoomSnapshot(latestRoom));
+      sendSnapshot(toClientRoomSnapshot(latestRoom, seatId));
       const handleAbort = () => {
         unsubscribe();
 

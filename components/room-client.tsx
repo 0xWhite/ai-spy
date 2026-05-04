@@ -67,15 +67,11 @@ export function RoomClient({ initialRoom, selfSeatId }: RoomClientProps) {
         }
       },
       async sendMessage(text: string) {
-        const nextRoom = await postJson(`/api/rooms/${roomCode}/message`, {
-          seatId: selfSeatId,
-          text,
-        });
+        const nextRoom = await postJson(`/api/rooms/${roomCode}/message`, { text });
         setRoom(nextRoom);
       },
       async vote(targetSeatId: string) {
         const nextRoom = await postJson(`/api/rooms/${roomCode}/vote`, {
-          voterSeatId: selfSeatId,
           targetSeatId,
         });
         setRoom(nextRoom);

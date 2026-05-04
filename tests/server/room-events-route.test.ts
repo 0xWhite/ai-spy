@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const { getRoomMock, subscribeMock } = vi.hoisted(() => ({
+const { cookiesMock, getRoomMock, subscribeMock } = vi.hoisted(() => ({
+  cookiesMock: vi.fn(),
   getRoomMock: vi.fn(),
   subscribeMock: vi.fn(),
+}));
+
+vi.mock("next/headers", () => ({
+  cookies: cookiesMock,
 }));
 
 vi.mock("@/lib/server/room-store", () => ({
@@ -66,6 +71,7 @@ function buildRoom(connected: boolean) {
 
 describe("room events route", () => {
   beforeEach(() => {
+    cookiesMock.mockReset();
     getRoomMock.mockReset();
     subscribeMock.mockReset();
   });
@@ -76,6 +82,9 @@ describe("room events route", () => {
 
     getRoomMock.mockReturnValueOnce(staleRoom).mockReturnValueOnce(freshRoom);
     subscribeMock.mockReturnValue(() => {});
+    cookiesMock.mockResolvedValue({
+      get: () => undefined,
+    });
 
     const response = await GET(new Request("http://localhost/api/rooms/ABCDEF/events"), {
       params: Promise.resolve({

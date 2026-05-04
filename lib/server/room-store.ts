@@ -11,6 +11,7 @@ import {
   type AiRuntime,
 } from "@/lib/server/ai/runtime";
 import { RoomBroadcast } from "@/lib/server/room-broadcast";
+import { normalizeRoomCode } from "@/lib/server/room-seat-cookie";
 
 const ROOM_CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const ROOM_CODE_LENGTH = 6;
@@ -27,8 +28,9 @@ export type HiddenClientSeatState = Omit<SeatState, "role">;
 export type RevealedClientSeatState = SeatState;
 export type ClientSeatState = HiddenClientSeatState | RevealedClientSeatState;
 
-export interface ClientRoomSnapshot extends Omit<RoomSnapshot, "seats"> {
+export interface ClientRoomSnapshot extends Omit<RoomSnapshot, "seats" | "votes"> {
   seats: ClientSeatState[];
+  selfVoteTargetId: string | null;
 }
 
 export interface RevealedClientRoomSnapshot extends ClientRoomSnapshot {
@@ -55,11 +57,24 @@ function cloneRoomSnapshot(room: RoomSnapshot) {
   return structuredClone(room);
 }
 
-export function toClientRoomSnapshot(room: RoomSnapshot): ClientRoomSnapshot {
+function isHiddenVotePhase(phase: RoomSnapshotPhase) {
+  return phase === "voting" || phase === "tiebreak_voting";
+}
+
+export function toClientRoomSnapshot(
+  room: RoomSnapshot,
+  viewerSeatId: string | null = null,
+): ClientRoomSnapshot {
   const revealRoles = room.phase === "finished" && room.result !== null;
+  const { votes, ...clientRoom } = cloneRoomSnapshot(room);
+  void votes;
 
   return {
-    ...cloneRoomSnapshot(room),
+    ...clientRoom,
+    selfVoteTargetId:
+      viewerSeatId && isHiddenVotePhase(room.phase)
+        ? room.votes[viewerSeatId] ?? null
+        : null,
     seats: room.seats.map((seat) => {
       if (revealRoles) {
         return { ...seat };
@@ -117,10 +132,6 @@ function ensureHostSeatIsHuman(room: RoomState) {
       return seat;
     }),
   };
-}
-
-function normalizeRoomCode(code: string) {
-  return code.trim().toUpperCase();
 }
 
 function generateRoomCode(existingCodes: Set<string>) {
@@ -299,7 +310,9 @@ export class InMemoryRoomStore {
       throw new RoomStoreError("ROOM_NOT_FOUND");
     }
 
-    const seatToConnect = room.seats.find((seat) => !seat.connected);
+    const seatToConnect = room.seats.find(
+      (seat) => seat.role === "human" && !seat.connected,
+    );
     if (!seatToConnect) {
       throw new RoomStoreError("ROOM_FULL");
     }

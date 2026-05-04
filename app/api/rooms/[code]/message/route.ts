@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { postRoomMessageAction, RoomActionError } from "@/lib/server/room-actions";
-import { RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
+import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
+import { roomStore, RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +30,12 @@ async function readMessageBody(request: Request) {
   if (
     !body ||
     typeof body !== "object" ||
-    typeof (body as { seatId?: unknown }).seatId !== "string" ||
     typeof (body as { text?: unknown }).text !== "string"
   ) {
     throw new InvalidRequestBodyError();
   }
 
   return body as {
-    seatId: string;
     text: string;
   };
 }
@@ -47,14 +47,22 @@ export async function POST(
   try {
     const { code } = await context.params;
     const body = await readMessageBody(request);
+    const room = roomStore.getRoom(code);
+    if (!room) {
+      throw new RoomStoreError("ROOM_NOT_FOUND");
+    }
+
+    const seatId = getValidatedBoundSeatId(await cookies(), room);
+    if (!seatId) {
+      return Response.json({ error: "SEAT_NOT_BOUND" }, { status: 403 });
+    }
+    const nextRoom = postRoomMessageAction(code, {
+      seatId,
+      text: body.text,
+    });
 
     return Response.json(
-      toClientRoomSnapshot(
-        postRoomMessageAction(code, {
-          seatId: body.seatId,
-          text: body.text,
-        }),
-      ),
+      toClientRoomSnapshot(nextRoom, seatId),
     );
   } catch (error) {
     if (error instanceof InvalidRequestBodyError) {

@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
 import { roomStore, toClientRoomSnapshot } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
@@ -19,5 +21,7 @@ export async function GET(
     return Response.json({ error: "ROOM_NOT_FOUND" }, { status: 404 });
   }
 
-  return Response.json(toClientRoomSnapshot(room));
+  return Response.json(
+    toClientRoomSnapshot(room, getValidatedBoundSeatId(await cookies(), room)),
+  );
 }

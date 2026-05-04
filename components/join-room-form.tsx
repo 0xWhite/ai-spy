@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export type JoinRoomPayload = {
   code: string;
@@ -10,12 +11,32 @@ export type JoinRoomPayload = {
 type JoinRoomFormProps = {
   onJoin?: (payload: JoinRoomPayload) => Promise<void> | void;
 };
-
-const defaultJoinHandler = async () => {};
 const INVITE_CODE_PATTERN = /^[A-Z0-9]{6}$/;
 
-export function JoinRoomForm({ onJoin = defaultJoinHandler }: JoinRoomFormProps) {
+export function JoinRoomForm({ onJoin }: JoinRoomFormProps) {
   const [isPending, setIsPending] = useState(false);
+  const router = useRouter();
+
+  async function handleJoin(payload: JoinRoomPayload) {
+    if (onJoin) {
+      await onJoin(payload);
+      return;
+    }
+
+    const response = await fetch(`/api/rooms/${payload.code}/join`, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      throw new Error(`REQUEST_FAILED_${response.status}`);
+    }
+
+    const room = (await response.json()) as {
+      code: string;
+    };
+
+    router.push(`/room/${room.code}`);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,7 +52,7 @@ export function JoinRoomForm({ onJoin = defaultJoinHandler }: JoinRoomFormProps)
     setIsPending(true);
 
     try {
-      await onJoin({ code });
+      await handleJoin({ code });
     } finally {
       setIsPending(false);
     }

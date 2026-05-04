@@ -42,8 +42,54 @@ export function createRoomAction(input: CreateRoomInput) {
   return roomStore.createRoom(input);
 }
 
-export function joinRoomAction(code: string) {
-  return roomStore.joinRoom(code);
+export function joinRoomAction(
+  code: string,
+  preferredSeatId: string | null = null,
+  store: InMemoryRoomStore = roomStore,
+) {
+  const room = store.getRoom(code);
+  if (!room) {
+    throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+
+  const preferredSeat = preferredSeatId
+    ? room.seats.find(
+        (seat) => seat.id === preferredSeatId && seat.role === "human",
+      )
+    : undefined;
+
+  if (preferredSeat) {
+    if (preferredSeat.connected) {
+      return {
+        room,
+        seatId: preferredSeat.id,
+      };
+    }
+
+    return {
+      room: store.saveRoom({
+        ...room,
+        seats: room.seats.map((seat) =>
+          seat.id === preferredSeat.id ? { ...seat, connected: true } : seat,
+        ),
+      }),
+      seatId: preferredSeat.id,
+    };
+  }
+
+  const joinedRoom = store.joinRoom(code);
+  const seatId = room.seats.find(
+    (seat) => seat.role === "human" && !seat.connected,
+  )?.id;
+
+  if (!seatId) {
+    throw new RoomStoreError("ROOM_FULL");
+  }
+
+  return {
+    room: joinedRoom,
+    seatId,
+  };
 }
 
 export function startRoomAction(

@@ -141,7 +141,7 @@ export function RoomShell({
                 disabled={!onVote}
                 onVote={onVote}
                 seats={room.seats}
-                selectedSeatId={selfSeatId ? room.votes[selfSeatId] : undefined}
+                selectedSeatId={room.selfVoteTargetId ?? undefined}
                 selfSeatId={selfSeatId ?? ""}
                 tieSeatIds={room.phase === "tiebreak_voting" ? room.tieSeatIds : []}
               />

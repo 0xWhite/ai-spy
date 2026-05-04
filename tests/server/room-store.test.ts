@@ -49,8 +49,11 @@ describe("room store", () => {
 
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(updatedRoom);
-    expect(updatedRoom.seats.find((seat) => seat.id === "seat-2")?.connected).toBe(
+    expect(updatedRoom.seats.find((seat) => seat.id === "seat-3")?.connected).toBe(
       true,
+    );
+    expect(updatedRoom.seats.find((seat) => seat.id === "seat-2")?.connected).toBe(
+      false,
     );
 
     unsubscribe();
@@ -89,7 +92,7 @@ describe("room store", () => {
     });
 
     const unsubscribe = store.subscribe(room.code, (snapshot) => {
-      snapshot.seats[1].connected = false;
+      snapshot.seats[2].connected = false;
       snapshot.messages.push({
         id: "listener-mutation",
         kind: "system",
@@ -102,7 +105,7 @@ describe("room store", () => {
 
     const storedRoom = store.getRoom(room.code);
 
-    expect(storedRoom?.seats[1].connected).toBe(true);
+    expect(storedRoom?.seats[2].connected).toBe(true);
     expect(storedRoom?.messages).toEqual([]);
 
     unsubscribe();
@@ -378,5 +381,30 @@ describe("room store", () => {
     const clientRoom = toClientRoomSnapshot(room);
 
     expect(clientRoom.seats[0]).toHaveProperty("role");
+  });
+
+  it("redacts active vote maps from client snapshots while preserving the viewer's own vote", () => {
+    const store = new InMemoryRoomStore();
+    const room = store.saveRoom({
+      ...store.createRoom({
+        totalSeats: 7,
+        aiCount: 0,
+        roundOneSeconds: 300,
+        roundSeconds: 180,
+        voteSeconds: 60,
+      }),
+      phase: "voting",
+      round: 1,
+      phaseEndsAt: Date.now() + 60_000,
+      votes: {
+        "seat-1": "seat-2",
+        "seat-2": "seat-3",
+      },
+    });
+
+    const clientRoom = toClientRoomSnapshot(room, "seat-2");
+
+    expect(clientRoom).not.toHaveProperty("votes");
+    expect(clientRoom.selfVoteTargetId).toBe("seat-3");
   });
 });
