@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
+import { toClientRoomSnapshot } from "@/lib/room-snapshot";
 import { joinRoomAction } from "@/lib/server/room-actions";
 import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
 import { bindSeatCookie } from "@/lib/server/room-seat-cookie";
-import { roomStore, RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
+import { roomStore, RoomStoreError } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,11 @@ export async function POST(
   try {
     const { code } = await context.params;
     const cookieStore = await cookies();
-    const existingRoom = roomStore.getRoom(code);
+    const existingRoom = await roomStore.getRoom(code);
     const boundSeatId = existingRoom
       ? getValidatedBoundSeatId(cookieStore, existingRoom)
       : null;
-    const { room, seatId } = joinRoomAction(code, boundSeatId);
+    const { room, seatId } = await joinRoomAction(code, boundSeatId);
 
     bindSeatCookie(cookieStore, room.code, seatId);
 

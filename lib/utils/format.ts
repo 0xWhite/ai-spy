@@ -13,6 +13,7 @@ const SEAT_COLOR_LABELS: Record<SeatColor, string> = {
   purple: "紫色",
   cyan: "青色",
   orange: "橙色",
+  pink: "粉色",
 };
 
 const PHASE_LABELS: Record<GamePhase, string> = {
@@ -25,14 +26,22 @@ const PHASE_LABELS: Record<GamePhase, string> = {
   finished: "结算完成",
 };
 
-export function formatSeatLabel(seat: Pick<SeatState, "color" | "id">) {
-  const seatNumber = seat.id.replace("seat-", "");
-  return `${SEAT_COLOR_LABELS[seat.color]} ${seatNumber} 号`;
+export function formatSeatLabel(
+  seat: Partial<Pick<SeatState, "color" | "number">>,
+) {
+  if (!seat.color || seat.number === undefined) {
+    return "未分配席位";
+  }
+
+  return `${SEAT_COLOR_LABELS[seat.color]} ${seat.number} 号`;
 }
 
-export function formatPhaseLabel(phase: "waiting" | GamePhase) {
+export function formatPhaseLabel(phase: "waiting" | "closed" | GamePhase) {
   if (phase === "waiting") {
     return "等待开局";
+  }
+  if (phase === "closed") {
+    return "房间已解散";
   }
 
   return PHASE_LABELS[phase];
@@ -57,4 +66,11 @@ export function formatMessageTime(message: Pick<RoomMessage, "createdAt">) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(message.createdAt);
+}
+
+export function formatMessageDay(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+  }).format(timestamp);
 }

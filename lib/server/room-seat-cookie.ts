@@ -3,10 +3,30 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 const ROOM_SEAT_COOKIE_PREFIX = "room-";
 const ROOM_SEAT_COOKIE_SUFFIX = "-seat";
 const ROOM_SEAT_COOKIE_VERSION = "v1";
-// Room state already lives in-memory per process, so a process-local fallback
-// secret matches the current single-process MVP assumptions.
-const ROOM_SEAT_COOKIE_SECRET =
-  process.env.ROOM_SEAT_COOKIE_SECRET?.trim() || randomBytes(32).toString("base64url");
+
+declare global {
+  var __aiSpyRoomSeatCookieSecret: string | undefined;
+}
+
+function getRoomSeatCookieSecret() {
+  const configuredSecret = process.env.ROOM_SEAT_COOKIE_SECRET?.trim();
+  if (configuredSecret) {
+    return configuredSecret;
+  }
+
+  // Room state already lives in-memory per process, so a process-local fallback
+  // secret matches the current single-process MVP assumptions as long as every
+  // server module reads the same shared value.
+  if (!globalThis.__aiSpyRoomSeatCookieSecret) {
+    globalThis.__aiSpyRoomSeatCookieSecret = randomBytes(32).toString("base64url");
+  }
+
+  return globalThis.__aiSpyRoomSeatCookieSecret;
+}
+
+function shouldUseSecureSeatCookie() {
+  return process.env.ROOM_SEAT_COOKIE_SECURE === "true";
+}
 
 type CookieReader = {
   get(name: string): { value: string } | undefined;
@@ -21,6 +41,7 @@ type CookieWriter = {
       sameSite?: "lax" | "strict" | "none" | boolean;
       secure?: boolean;
       path?: string;
+      maxAge?: number;
     },
   ): void;
 };
@@ -34,7 +55,7 @@ export function getRoomSeatCookieName(code: string) {
 }
 
 function signRoomSeatCookie(code: string, seatId: string) {
-  return createHmac("sha256", ROOM_SEAT_COOKIE_SECRET)
+  return createHmac("sha256", getRoomSeatCookieSecret())
     .update(`${ROOM_SEAT_COOKIE_VERSION}:${normalizeRoomCode(code)}:${seatId}`)
     .digest("base64url");
 }
@@ -89,7 +110,20 @@ export function bindSeatCookie(
   cookieStore.set(getRoomSeatCookieName(code), createRoomSeatCookieValue(code, seatId), {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureSeatCookie(),
     path: "/",
+  });
+}
+
+export function clearSeatCookie(
+  cookieStore: CookieWriter,
+  code: string,
+) {
+  cookieStore.set(getRoomSeatCookieName(code), "", {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: shouldUseSecureSeatCookie(),
+    path: "/",
+    maxAge: 0,
   });
 }

@@ -1,10 +1,10 @@
 import { cookies } from "next/headers";
-import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
 import {
-  roomStore,
   toClientRoomSnapshot,
   type ClientRoomSnapshot,
-} from "@/lib/server/room-store";
+} from "@/lib/room-snapshot";
+import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
+import { roomStore } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -18,12 +18,14 @@ function toSsePayload(data: unknown) {
   return `data: ${JSON.stringify(data)}\n\n`;
 }
 
+const EVENT_POLL_INTERVAL_MS = 500;
+
 export async function GET(
   request: Request,
   context: RouteParams,
 ) {
   const { code } = await context.params;
-  const room = roomStore.getRoom(code);
+  const room = await roomStore.getRoom(code);
 
   if (!room) {
     return Response.json({ error: "ROOM_NOT_FOUND" }, { status: 404 });
@@ -34,17 +36,47 @@ export async function GET(
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
+      let isClosed = false;
+      let lastPayload = "";
+      let isPolling = false;
+
       const sendSnapshot = (snapshot: ClientRoomSnapshot) => {
+        const payload = JSON.stringify(snapshot);
+        if (payload === lastPayload || isClosed) {
+          return;
+        }
+
+        lastPayload = payload;
         controller.enqueue(encoder.encode(toSsePayload(snapshot)));
       };
 
-      const unsubscribe = roomStore.subscribe(code, (snapshot) => {
-        sendSnapshot(toClientRoomSnapshot(snapshot, seatId));
-      });
-      const latestRoom = roomStore.getRoom(code) ?? room;
-      sendSnapshot(toClientRoomSnapshot(latestRoom, seatId));
+      const pollLatestRoom = async () => {
+        if (isPolling || isClosed) {
+          return;
+        }
+
+        isPolling = true;
+
+        try {
+          const latestRoom = await roomStore.getRoom(code);
+          if (!latestRoom) {
+            return;
+          }
+
+          sendSnapshot(toClientRoomSnapshot(latestRoom, seatId));
+        } finally {
+          isPolling = false;
+        }
+      };
+
+      void pollLatestRoom();
+      const interval = setInterval(() => {
+        void pollLatestRoom();
+      }, EVENT_POLL_INTERVAL_MS);
+
       const handleAbort = () => {
-        unsubscribe();
+        isClosed = true;
+        clearInterval(interval);
 
         try {
           controller.close();

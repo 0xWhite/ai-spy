@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { RoomClient } from "@/components/room-client";
+import { toClientRoomSnapshot } from "@/lib/room-snapshot";
 import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
-import { roomStore, toClientRoomSnapshot } from "@/lib/server/room-store";
+import { roomStore } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ type RoomPageProps = {
 
 export default async function RoomPage({ params }: RoomPageProps) {
   const { code } = await params;
-  const room = roomStore.getRoom(code);
+  const room = await roomStore.getRoom(code);
 
   if (!room) {
     notFound();
@@ -22,6 +23,12 @@ export default async function RoomPage({ params }: RoomPageProps) {
 
   const cookieStore = await cookies();
   const selfSeatId = getValidatedBoundSeatId(cookieStore, room);
+  if (room.phase === "closed") {
+    redirect("/?error=room-closed");
+  }
+  if (!selfSeatId) {
+    redirect(`/?code=${room.code}&error=seat-required`);
+  }
 
   return <RoomClient initialRoom={toClientRoomSnapshot(room, selfSeatId)} selfSeatId={selfSeatId} />;
 }

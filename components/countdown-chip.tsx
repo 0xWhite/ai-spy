@@ -5,9 +5,15 @@ import { formatCountdown } from "@/lib/utils/format";
 
 type CountdownChipProps = {
   phaseEndsAt: number | null;
+  className?: string;
+  variant?: "light" | "dark";
 };
 
-export function CountdownChip({ phaseEndsAt }: CountdownChipProps) {
+export function CountdownChip({
+  phaseEndsAt,
+  className = "",
+  variant = "light",
+}: CountdownChipProps) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -25,7 +31,13 @@ export function CountdownChip({ phaseEndsAt }: CountdownChipProps) {
   }, [phaseEndsAt]);
 
   return (
-    <div className="inline-flex min-w-20 items-center justify-center rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-semibold text-slate-950">
+    <div
+      className={`inline-flex min-w-20 items-center justify-center px-3 py-1 text-sm font-semibold ${
+        variant === "dark"
+          ? "bg-transparent text-white"
+          : "rounded-full border border-slate-200 bg-white text-slate-950"
+      } ${className}`}
+    >
       {formatCountdown(phaseEndsAt, now)}
     </div>
   );

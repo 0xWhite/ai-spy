@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
+import { toClientRoomSnapshot } from "@/lib/room-snapshot";
 import { startRoomAction } from "@/lib/server/room-actions";
 import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
-import { roomStore, RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
+import { roomStore, RoomStoreError } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function POST(
 ) {
   try {
     const { code } = await context.params;
-    const room = roomStore.getRoom(code);
+    const room = await roomStore.getRoom(code);
     if (!room) {
       throw new RoomStoreError("ROOM_NOT_FOUND");
     }
@@ -30,7 +31,7 @@ export async function POST(
       return Response.json({ error: "SEAT_NOT_HOST" }, { status: 403 });
     }
 
-    const nextRoom = startRoomAction(code);
+    const nextRoom = await startRoomAction(code);
 
     return Response.json(toClientRoomSnapshot(nextRoom, seatId));
   } catch (error) {

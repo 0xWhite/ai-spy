@@ -34,12 +34,55 @@ function buildPlayerMessage(
   };
 }
 
+const ELIMINATED_REVEAL_SECONDS = 3;
+
 function getAliveSeats(seats: SeatState[]) {
   return seats.filter((seat) => seat.status === "alive");
 }
 
+function shuffleArray<T>(
+  values: T[],
+  random: () => number,
+) {
+  const nextValues = [...values];
+
+  for (let index = nextValues.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    const currentValue = nextValues[index];
+    nextValues[index] = nextValues[swapIndex];
+    nextValues[swapIndex] = currentValue;
+  }
+
+  return nextValues;
+}
+
+function assignActiveSeatPresentation(
+  seats: SeatState[],
+  random: () => number,
+) {
+  const shuffledSeats = shuffleArray(seats, random);
+  const shuffledNumbers = shuffleArray(
+    Array.from({ length: seats.length }, (_, index) => index + 1),
+    random,
+  );
+  const shuffledColors = shuffleArray(SEAT_COLORS.slice(0, seats.length), random);
+
+  return shuffledSeats.map((seat, index) => ({
+    ...seat,
+    number: shuffledNumbers[index],
+    color: shuffledColors[index],
+  }));
+}
+
 function getAliveSeatIdSet(seats: SeatState[]) {
   return new Set(getAliveSeats(seats).map((seat) => seat.id));
+}
+
+function getEffectiveEndgameAliveSeatCount(room: RoomState) {
+  return Math.min(
+    room.config.endgameAliveSeatCount,
+    Math.max(1, room.seats.length - 1),
+  );
 }
 
 function getSeatById(seats: SeatState[], seatId: string) {
@@ -87,6 +130,47 @@ function countVotes(votes: VoteMap, validSeatIds: Set<string>) {
   return tallies;
 }
 
+function getSeatNumberLabel(seats: SeatState[], seatId: string) {
+  const seat = seats.find((entry) => entry.id === seatId);
+  return `${seat?.number ?? seatId.replace(/^seat-/, "")}号`;
+}
+
+function appendSystemMessageToRoom(
+  room: RoomState,
+  text: string,
+  createdAt: number,
+): RoomState {
+  return {
+    ...room,
+    messages: [
+      ...room.messages,
+      buildSystemMessage(text, createdAt),
+    ],
+  };
+}
+
+function buildVoteResultMessage(
+  seats: SeatState[],
+  tallies: Map<string, number>,
+  resultText: string,
+) {
+  const tallyText =
+    tallies.size === 0
+      ? "无人投票"
+      : [...tallies.entries()]
+          .sort((left, right) => {
+            if (right[1] !== left[1]) {
+              return right[1] - left[1];
+            }
+
+            return left[0].localeCompare(right[0], "zh-Hans-CN-u-kn-true");
+          })
+          .map(([seatId, count]) => `${getSeatNumberLabel(seats, seatId)} ${count}票`)
+          .join("，");
+
+  return `投票结果：${tallyText}。${resultText}`;
+}
+
 export function buildInitialRoomState(
   input: BuildInitialRoomStateInput,
 ): RoomState {
@@ -115,6 +199,7 @@ export function buildInitialRoomState(
         id: seatId,
         role: index < config.aiCount ? "ai" : "human",
         status: "alive",
+        number: index + 1,
         color: SEAT_COLORS[index % SEAT_COLORS.length],
         connected: seatId === input.hostSeatId,
         isHost: seatId === input.hostSeatId,
@@ -144,7 +229,11 @@ export function enterTieBreakFromVotes(
   };
 }
 
-export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState {
+export function eliminateSeat(
+  room: RoomState,
+  targetSeatId: string,
+  now: number | null = null,
+): RoomState {
   const aliveSeatIds = getAliveSeatIdSet(room.seats);
 
   if (!aliveSeatIds.has(targetSeatId)) {
@@ -173,7 +262,7 @@ export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState 
     };
   }
 
-  if (aliveSeats.length === room.config.endgameAliveSeatCount) {
+  if (aliveSeats.length === getEffectiveEndgameAliveSeatCount(room)) {
     return {
       ...room,
       phase: "finished",
@@ -193,7 +282,8 @@ export function eliminateSeat(room: RoomState, targetSeatId: string): RoomState 
     eliminatedSeatIds,
     votes: {},
     tieSeatIds: [],
-    phaseEndsAt: null,
+    phaseEndsAt:
+      now === null ? null : now + ELIMINATED_REVEAL_SECONDS * 1000,
   };
 }
 
@@ -203,10 +293,22 @@ export function closeVotingPhase(room: RoomState, now: number): RoomState {
   if (tallies.size === 0) {
     if (room.phase === "tiebreak_voting") {
       const targetSeatId = getDeterministicTiebreakEliminationSeatId(room);
-      return targetSeatId ? eliminateSeat(room, targetSeatId) : room;
+      if (!targetSeatId) {
+        return room;
+      }
+
+        return appendSystemMessageToRoom(
+        eliminateSeat(room, targetSeatId, now),
+        buildVoteResultMessage(room.seats, tallies, `${getSeatNumberLabel(room.seats, targetSeatId)}出局。`),
+        now,
+      );
     }
 
-    return enterTieBreakFromVotes(room, getSortedAliveSeatIds(room), now);
+    return appendSystemMessageToRoom(
+      enterTieBreakFromVotes(room, getSortedAliveSeatIds(room), now),
+      buildVoteResultMessage(room.seats, tallies, "进入平票加赛。"),
+      now,
+    );
   }
 
   let topVotes = 0;
@@ -225,10 +327,18 @@ export function closeVotingPhase(room: RoomState, now: number): RoomState {
   }
 
   if (topSeatIds.length > 1) {
-    return enterTieBreakFromVotes(room, topSeatIds, now);
+    return appendSystemMessageToRoom(
+      enterTieBreakFromVotes(room, topSeatIds, now),
+      buildVoteResultMessage(room.seats, tallies, "进入平票加赛。"),
+      now,
+    );
   }
 
-  return eliminateSeat(room, topSeatIds[0]);
+  return appendSystemMessageToRoom(
+    eliminateSeat(room, topSeatIds[0], now),
+    buildVoteResultMessage(room.seats, tallies, `${getSeatNumberLabel(room.seats, topSeatIds[0])}出局。`),
+    now,
+  );
 }
 
 export function appendPlayerMessage(
@@ -280,6 +390,10 @@ export function castVote(
     invariant("CANNOT_VOTE_SELF");
   }
 
+  if (room.votes[input.voterSeatId]) {
+    invariant("SEAT_ALREADY_VOTED");
+  }
+
   if (!validTargetSeatIds.has(input.targetSeatId)) {
     invariant("INVALID_VOTE_TARGET");
   }
@@ -326,11 +440,31 @@ export function advancePhaseFromTimeout(
   }
 }
 
-export function startGame(room: RoomState, now: number): RoomState {
+export function startGame(
+  room: RoomState,
+  now: number,
+  random: () => number = Math.random,
+): RoomState {
+  const connectedHumans = room.seats.filter(
+    (seat) => seat.role === "human" && seat.connected,
+  );
+  const aiSeats = room.seats
+    .filter((seat) => seat.role === "ai")
+    .slice(0, room.config.aiCount)
+    .map((seat) => ({
+      ...seat,
+      connected: true,
+    }));
+  const activeSeats = assignActiveSeatPresentation(
+    [...connectedHumans, ...aiSeats],
+    random,
+  );
+
   return {
     ...room,
     phase: "discussion",
     round: 1,
+    seats: activeSeats,
     votes: {},
     tieSeatIds: [],
     phaseEndsAt: now + room.config.roundOneSeconds * 1000,

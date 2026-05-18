@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import RoomPage from "@/app/room/[code]/page";
+import type { RoomSnapshot } from "@/lib/room-snapshot";
 import { createRoomSeatCookieValue } from "@/lib/server/room-seat-cookie";
-import type { RoomSnapshot } from "@/lib/server/room-store";
 
 const {
   cookiesMock,
   notFoundMock,
+  redirectMock,
   getRoomMock,
 } = vi.hoisted(() => ({
   cookiesMock: vi.fn(),
   notFoundMock: vi.fn(),
+  redirectMock: vi.fn(),
   getRoomMock: vi.fn(),
 }));
 
@@ -19,20 +21,32 @@ vi.mock("next/headers", () => ({
 
 vi.mock("next/navigation", () => ({
   notFound: notFoundMock,
+  redirect: redirectMock,
 }));
 
 vi.mock("@/lib/server/room-store", () => ({
   roomStore: {
     getRoom: getRoomMock,
   },
+}));
+
+vi.mock("@/lib/room-snapshot", () => ({
   toClientRoomSnapshot: (room: RoomSnapshot) => ({
     ...room,
     seats:
-      room.phase === "finished" && room.result
+      room.phase === "waiting"
+        ? room.seats.map((seat) => ({
+            id: seat.id,
+            status: seat.status,
+            connected: seat.connected,
+            isHost: seat.isHost,
+          }))
+        : room.phase === "finished" && room.result
         ? room.seats
         : room.seats.map((seat) => ({
             id: seat.id,
             status: seat.status,
+            number: seat.number,
             color: seat.color,
             connected: seat.connected,
             isHost: seat.isHost,
@@ -48,6 +62,7 @@ describe("RoomPage", () => {
   beforeEach(() => {
     cookiesMock.mockReset();
     notFoundMock.mockReset();
+    redirectMock.mockReset();
     getRoomMock.mockReset();
   });
 
@@ -63,6 +78,7 @@ describe("RoomPage", () => {
             id: "seat-1",
             role: "human",
             status: "alive",
+            number: 1,
             color: "red",
             connected: true,
             isHost: true,
@@ -146,17 +162,13 @@ describe("RoomPage", () => {
       get: () => undefined,
     });
 
-    const result = await RoomPage({
+    await RoomPage({
       params: Promise.resolve({
         code: "ABCDEF",
       }),
     });
 
-    expect(result.props).toEqual(
-      expect.objectContaining({
-        selfSeatId: null,
-      }),
-    );
+    expect(redirectMock).toHaveBeenCalledWith("/?code=ABCDEF&error=seat-required");
   });
 
   it("leaves selfSeatId unbound when the seat cookie signature was tampered with", async () => {
@@ -171,6 +183,7 @@ describe("RoomPage", () => {
             id: "seat-1",
             role: "human",
             status: "alive",
+            number: 1,
             color: "red",
             connected: true,
             isHost: true,
@@ -179,6 +192,7 @@ describe("RoomPage", () => {
             id: "seat-2",
             role: "human",
             status: "alive",
+            number: 2,
             color: "blue",
             connected: true,
             isHost: false,
@@ -212,16 +226,12 @@ describe("RoomPage", () => {
           : undefined,
     });
 
-    const result = await RoomPage({
+    await RoomPage({
       params: Promise.resolve({
         code: "ABCDEF",
       }),
     });
 
-    expect(result.props).toEqual(
-      expect.objectContaining({
-        selfSeatId: null,
-      }),
-    );
+    expect(redirectMock).toHaveBeenCalledWith("/?code=ABCDEF&error=seat-required");
   });
 });

@@ -67,20 +67,37 @@ it("creates a room through the API and navigates to the room when no handler is 
   expect(pushMock).toHaveBeenCalledWith("/room/ABCDEF");
 });
 
-it("preserves defaults when numeric fields are left blank", async () => {
+it("updates room config through the stepper controls", async () => {
   const user = userEvent.setup();
   const onCreate = vi.fn().mockResolvedValue(undefined);
 
   render(<CreateRoomForm onCreate={onCreate} />);
 
-  await user.clear(screen.getByLabelText("总人数"));
-  await user.clear(screen.getByLabelText("AI 数量"));
+  await user.click(screen.getByRole("button", { name: "总人数增加" }));
+  await user.click(screen.getByRole("button", { name: "AI 数量增加" }));
   await user.click(screen.getByRole("button", { name: "创建房间" }));
 
   expect(onCreate).toHaveBeenCalledWith({
-    totalSeats: 7,
-    aiCount: 1,
+    totalSeats: 8,
+    aiCount: 2,
     roundOneSeconds: 300,
     roundSeconds: 180,
   });
+});
+
+it("keeps stepper hover targets constrained to the button itself", () => {
+  render(<CreateRoomForm onCreate={vi.fn()} />);
+
+  const decreaseButton = screen.getByRole("button", { name: "总人数减少" });
+  const increaseButton = screen.getByRole("button", { name: "总人数增加" });
+
+  expect(decreaseButton.className).not.toContain("absolute");
+  expect(decreaseButton.className).not.toContain("inset-0");
+  expect(increaseButton.className).not.toContain("absolute");
+  expect(increaseButton.className).not.toContain("inset-0");
+
+  expect(decreaseButton.parentElement?.className).not.toContain("pointer-events-none");
+  expect(increaseButton.parentElement?.className).not.toContain("pointer-events-none");
+  expect(decreaseButton.closest("label")).toBeNull();
+  expect(increaseButton.closest("label")).toBeNull();
 });

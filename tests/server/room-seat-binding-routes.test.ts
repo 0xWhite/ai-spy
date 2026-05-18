@@ -10,6 +10,8 @@ vi.mock("next/headers", () => ({
 
 import { POST as createRoom } from "@/app/api/rooms/route";
 import { POST as joinRoom } from "@/app/api/rooms/[code]/join/route";
+import { POST as leaveRoom } from "@/app/api/rooms/[code]/leave/route";
+import { POST as rematchRoom } from "@/app/api/rooms/[code]/rematch/route";
 import { POST as startRoom } from "@/app/api/rooms/[code]/start/route";
 import { POST as postMessage } from "@/app/api/rooms/[code]/message/route";
 import { POST as postVote } from "@/app/api/rooms/[code]/vote/route";
@@ -73,7 +75,7 @@ describe("room seat binding routes", () => {
   });
 
   it("binds the joined human seat cookie when taking a seat", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
@@ -108,8 +110,207 @@ describe("room seat binding routes", () => {
     );
   });
 
+  it("clears the seat cookie and frees the joined human seat when leaving a waiting room", async () => {
+    const room = await roomStore.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    await roomStore.joinRoom(room.code);
+    const { set } = cookieStoreFor(room.code, createRoomSeatCookieValue(room.code, "seat-3"));
+
+    const response = await leaveRoom(
+      new Request(`http://localhost/api/rooms/${room.code}/leave`, {
+        method: "POST",
+      }),
+      {
+        params: Promise.resolve({
+          code: room.code,
+        }),
+      },
+    );
+
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.seats.find((seat: { id: string }) => seat.id === "seat-3")).toEqual(
+      expect.objectContaining({
+        connected: false,
+      }),
+    );
+    expect(set).toHaveBeenCalledWith(
+      `room-${room.code}-seat`,
+      "",
+      expect.objectContaining({
+        httpOnly: true,
+        maxAge: 0,
+      }),
+    );
+  });
+
+  it("allows a joined player to leave after the game starts and marks the seat offline", async () => {
+    const room = await roomStore.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
+      phase: "discussion",
+      round: 1,
+      phaseEndsAt: Date.now() + 30_000,
+    });
+    const { set } = cookieStoreFor(room.code, createRoomSeatCookieValue(room.code, "seat-3"));
+
+    const response = await leaveRoom(
+      new Request(`http://localhost/api/rooms/${room.code}/leave`, {
+        method: "POST",
+      }),
+      {
+        params: Promise.resolve({
+          code: room.code,
+        }),
+      },
+    );
+
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.seats.find((seat: { id: string }) => seat.id === "seat-3")).toEqual(
+      expect.objectContaining({
+        connected: false,
+      }),
+    );
+    expect(set).toHaveBeenCalledWith(
+      `room-${room.code}-seat`,
+      "",
+      expect.objectContaining({
+        httpOnly: true,
+        maxAge: 0,
+      }),
+    );
+  });
+
+  it("allows the host to leave after the game starts and clears the host cookie", async () => {
+    const room = await roomStore.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
+      phase: "discussion",
+      round: 1,
+      phaseEndsAt: Date.now() + 30_000,
+    });
+    const { set } = cookieStoreFor(room.code, createRoomSeatCookieValue(room.code, "seat-1"));
+
+    const response = await leaveRoom(
+      new Request(`http://localhost/api/rooms/${room.code}/leave`, {
+        method: "POST",
+      }),
+      {
+        params: Promise.resolve({
+          code: room.code,
+        }),
+      },
+    );
+
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.seats.find((seat: { id: string }) => seat.id === "seat-1")).toEqual(
+      expect.objectContaining({
+        connected: false,
+      }),
+    );
+    expect(set).toHaveBeenCalledWith(
+      `room-${room.code}-seat`,
+      "",
+      expect.objectContaining({
+        httpOnly: true,
+        maxAge: 0,
+      }),
+    );
+  });
+
+  it("rejects closing a room after the game has started even for the host", async () => {
+    const room = await roomStore.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
+      phase: "discussion",
+      round: 1,
+      phaseEndsAt: Date.now() + 30_000,
+    });
+    cookieStoreFor(room.code, createRoomSeatCookieValue(room.code, "seat-1"));
+
+    const response = await import("@/app/api/rooms/[code]/close/route").then(({ POST }) =>
+      POST(
+        new Request(`http://localhost/api/rooms/${room.code}/close`, {
+          method: "POST",
+        }),
+        {
+          params: Promise.resolve({
+            code: room.code,
+          }),
+        },
+      ),
+    );
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: "ROOM_NOT_WAITING",
+    });
+  });
+
+  it("rejects rematch when the bound seat is not the host", async () => {
+    const room = await roomStore.createRoom({
+      totalSeats: 7,
+      aiCount: 1,
+      roundOneSeconds: 300,
+      roundSeconds: 180,
+    });
+
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
+      phase: "finished",
+      result: { winner: "human" },
+    });
+    cookieStoreFor(room.code, createRoomSeatCookieValue(room.code, "seat-3"));
+
+    const response = await rematchRoom(
+      new Request(`http://localhost/api/rooms/${room.code}/rematch`, {
+        method: "POST",
+      }),
+      {
+        params: Promise.resolve({
+          code: room.code,
+        }),
+      },
+    );
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "SEAT_NOT_HOST",
+    });
+  });
+
   it("ignores a forged bare seat cookie during join and binds the next available human seat", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
@@ -143,14 +344,14 @@ describe("room seat binding routes", () => {
   });
 
   it("rejects starting a room when the bound seat is not the host", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
       roundSeconds: 180,
     });
 
-    roomStore.joinRoom(room.code);
+    await roomStore.joinRoom(room.code);
     cookieStoreFor(room.code, createRoomSeatCookieValue(room.code, "seat-3"));
 
     const response = await startRoom(
@@ -171,7 +372,7 @@ describe("room seat binding routes", () => {
   });
 
   it("rejects starting a room when the cookie seat was forged by hand", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
@@ -198,14 +399,14 @@ describe("room seat binding routes", () => {
   });
 
   it("rejects starting a room when a signed cookie is edited to claim the host seat", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
       roundSeconds: 180,
     });
 
-    roomStore.joinRoom(room.code);
+    await roomStore.joinRoom(room.code);
     cookieStoreFor(room.code, tamperSeatClaimCookie(room.code, "seat-3", "seat-1"));
 
     const response = await startRoom(
@@ -226,16 +427,16 @@ describe("room seat binding routes", () => {
   });
 
   it("uses the cookie-bound seat for messages instead of trusting the JSON seatId", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
       roundSeconds: 180,
     });
 
-    roomStore.joinRoom(room.code);
-    roomStore.saveRoom({
-      ...roomStore.getRoom(room.code)!,
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
       phase: "discussion",
       round: 1,
       phaseEndsAt: Date.now() + 30_000,
@@ -274,16 +475,16 @@ describe("room seat binding routes", () => {
   });
 
   it("rejects messages from a signed cookie edited to claim another seat", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 1,
       roundOneSeconds: 300,
       roundSeconds: 180,
     });
 
-    roomStore.joinRoom(room.code);
-    roomStore.saveRoom({
-      ...roomStore.getRoom(room.code)!,
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
       phase: "discussion",
       round: 1,
       phaseEndsAt: Date.now() + 30_000,
@@ -314,7 +515,7 @@ describe("room seat binding routes", () => {
   });
 
   it("uses the cookie-bound seat for votes instead of trusting the JSON voterSeatId", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 0,
       roundOneSeconds: 300,
@@ -322,9 +523,9 @@ describe("room seat binding routes", () => {
       voteSeconds: 60,
     });
 
-    roomStore.joinRoom(room.code);
-    roomStore.saveRoom({
-      ...roomStore.getRoom(room.code)!,
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
       phase: "voting",
       round: 1,
       phaseEndsAt: Date.now() + 60_000,
@@ -357,7 +558,7 @@ describe("room seat binding routes", () => {
   });
 
   it("redacts active vote maps from room snapshots while preserving the viewer's own vote", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 0,
       roundOneSeconds: 300,
@@ -365,9 +566,9 @@ describe("room seat binding routes", () => {
       voteSeconds: 60,
     });
 
-    roomStore.joinRoom(room.code);
-    roomStore.saveRoom({
-      ...roomStore.getRoom(room.code)!,
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
       phase: "voting",
       round: 1,
       phaseEndsAt: Date.now() + 60_000,
@@ -394,7 +595,7 @@ describe("room seat binding routes", () => {
   });
 
   it("does not expose self vote data from a forged bare seat cookie", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 0,
       roundOneSeconds: 300,
@@ -402,9 +603,9 @@ describe("room seat binding routes", () => {
       voteSeconds: 60,
     });
 
-    roomStore.joinRoom(room.code);
-    roomStore.saveRoom({
-      ...roomStore.getRoom(room.code)!,
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
       phase: "voting",
       round: 1,
       phaseEndsAt: Date.now() + 60_000,
@@ -430,7 +631,7 @@ describe("room seat binding routes", () => {
   });
 
   it("does not expose self vote data from a signed cookie edited to claim another seat", async () => {
-    const room = roomStore.createRoom({
+    const room = await roomStore.createRoom({
       totalSeats: 7,
       aiCount: 0,
       roundOneSeconds: 300,
@@ -438,9 +639,9 @@ describe("room seat binding routes", () => {
       voteSeconds: 60,
     });
 
-    roomStore.joinRoom(room.code);
-    roomStore.saveRoom({
-      ...roomStore.getRoom(room.code)!,
+    await roomStore.joinRoom(room.code);
+    await roomStore.saveRoom({
+      ...(await roomStore.getRoom(room.code))!,
       phase: "voting",
       round: 1,
       phaseEndsAt: Date.now() + 60_000,

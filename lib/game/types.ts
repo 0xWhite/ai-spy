@@ -16,7 +16,8 @@ export type SeatColor =
   | "yellow"
   | "purple"
   | "cyan"
-  | "orange";
+  | "orange"
+  | "pink";
 
 export interface RoomConfig {
   totalSeats: number;
@@ -32,6 +33,7 @@ export interface SeatState {
   id: string;
   role: SeatRole;
   status: SeatStatus;
+  number: number;
   color: SeatColor;
   connected: boolean;
   isHost: boolean;

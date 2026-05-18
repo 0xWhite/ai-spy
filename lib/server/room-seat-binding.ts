@@ -1,4 +1,4 @@
-import type { RoomSnapshot } from "@/lib/server/room-store";
+import type { RoomSnapshot } from "@/lib/room-snapshot";
 import { getBoundSeatIdFromCookies } from "@/lib/server/room-seat-cookie";
 
 type CookieReader = {

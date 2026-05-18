@@ -1,8 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const { cookiesMock, getRoomMock, subscribeMock } = vi.hoisted(() => ({
+const { cookiesMock, getRoomMock } = vi.hoisted(() => ({
   cookiesMock: vi.fn(),
   getRoomMock: vi.fn(),
-  subscribeMock: vi.fn(),
 }));
 
 vi.mock("next/headers", () => ({
@@ -12,7 +11,6 @@ vi.mock("next/headers", () => ({
 vi.mock("@/lib/server/room-store", () => ({
   roomStore: {
     getRoom: getRoomMock,
-    subscribe: subscribeMock,
   },
   toClientRoomSnapshot: (room: {
     seats: Array<Record<string, unknown>>;
@@ -73,15 +71,13 @@ describe("room events route", () => {
   beforeEach(() => {
     cookiesMock.mockReset();
     getRoomMock.mockReset();
-    subscribeMock.mockReset();
   });
 
   it("streams the latest client-safe snapshot on connect", async () => {
     const staleRoom = buildRoom(false);
     const freshRoom = buildRoom(true);
 
-    getRoomMock.mockReturnValueOnce(staleRoom).mockReturnValueOnce(freshRoom);
-    subscribeMock.mockReturnValue(() => {});
+    getRoomMock.mockResolvedValueOnce(staleRoom).mockResolvedValueOnce(freshRoom);
     cookiesMock.mockResolvedValue({
       get: () => undefined,
     });
@@ -105,6 +101,5 @@ describe("room events route", () => {
     );
     expect(payload.seats[0]).not.toHaveProperty("role");
     expect(getRoomMock).toHaveBeenCalledTimes(2);
-    expect(subscribeMock).toHaveBeenCalledTimes(1);
   });
 });

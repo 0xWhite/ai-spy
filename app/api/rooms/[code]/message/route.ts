@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
+import { toClientRoomSnapshot } from "@/lib/room-snapshot";
 import { postRoomMessageAction, RoomActionError } from "@/lib/server/room-actions";
 import { getValidatedBoundSeatId } from "@/lib/server/room-seat-binding";
-import { roomStore, RoomStoreError, toClientRoomSnapshot } from "@/lib/server/room-store";
+import { roomStore, RoomStoreError } from "@/lib/server/room-store";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,7 @@ export async function POST(
   try {
     const { code } = await context.params;
     const body = await readMessageBody(request);
-    const room = roomStore.getRoom(code);
+    const room = await roomStore.getRoom(code);
     if (!room) {
       throw new RoomStoreError("ROOM_NOT_FOUND");
     }
@@ -56,7 +57,7 @@ export async function POST(
     if (!seatId) {
       return Response.json({ error: "SEAT_NOT_BOUND" }, { status: 403 });
     }
-    const nextRoom = postRoomMessageAction(code, {
+    const nextRoom = await postRoomMessageAction(code, {
       seatId,
       text: body.text,
     });

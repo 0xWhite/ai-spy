@@ -3,7 +3,7 @@ import type { RoomState } from "@/lib/game/types";
 import {
   roomStore,
   RoomStoreError,
-  type InMemoryRoomStore,
+  type RoomStore,
   type CreateRoomInput,
 } from "@/lib/server/room-store";
 
@@ -15,6 +15,7 @@ export class RoomActionError extends Error {
       | "PHASE_DOES_NOT_ALLOW_MESSAGES"
       | "PHASE_DOES_NOT_ALLOW_VOTES"
       | "CANNOT_VOTE_SELF"
+      | "SEAT_ALREADY_VOTED"
       | "INVALID_VOTE_TARGET",
   ) {
     super(code);
@@ -30,6 +31,7 @@ function toActionError(error: unknown): never {
       error.message === "PHASE_DOES_NOT_ALLOW_MESSAGES" ||
       error.message === "PHASE_DOES_NOT_ALLOW_VOTES" ||
       error.message === "CANNOT_VOTE_SELF" ||
+      error.message === "SEAT_ALREADY_VOTED" ||
       error.message === "INVALID_VOTE_TARGET")
   ) {
     throw new RoomActionError(error.message);
@@ -42,12 +44,12 @@ export function createRoomAction(input: CreateRoomInput) {
   return roomStore.createRoom(input);
 }
 
-export function joinRoomAction(
+export async function joinRoomAction(
   code: string,
   preferredSeatId: string | null = null,
-  store: InMemoryRoomStore = roomStore,
+  store: RoomStore = roomStore,
 ) {
-  const room = store.getRoom(code);
+  const room = await store.getRoom(code);
   if (!room) {
     throw new RoomStoreError("ROOM_NOT_FOUND");
   }
@@ -67,7 +69,7 @@ export function joinRoomAction(
     }
 
     return {
-      room: store.saveRoom({
+      room: await store.saveRoom({
         ...room,
         seats: room.seats.map((seat) =>
           seat.id === preferredSeat.id ? { ...seat, connected: true } : seat,
@@ -77,7 +79,7 @@ export function joinRoomAction(
     };
   }
 
-  const joinedRoom = store.joinRoom(code);
+  const joinedRoom = await store.joinRoom(code);
   const seatId = room.seats.find(
     (seat) => seat.role === "human" && !seat.connected,
   )?.id;
@@ -92,14 +94,17 @@ export function joinRoomAction(
   };
 }
 
-export function startRoomAction(
+export async function startRoomAction(
   code: string,
   now = Date.now(),
-  store: InMemoryRoomStore = roomStore,
+  store: RoomStore = roomStore,
 ) {
-  const room = store.getRoom(code);
+  const room = await store.getRoom(code);
   if (!room) {
     throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+  if (room.phase === "closed") {
+    throw new RoomStoreError("ROOM_CLOSED");
   }
   if (room.phase !== "waiting") {
     throw new RoomStoreError("ROOM_NOT_WAITING");
@@ -113,18 +118,21 @@ export function startRoomAction(
   });
 }
 
-export function postRoomMessageAction(
+export async function postRoomMessageAction(
   code: string,
   input: {
     seatId: string;
     text: string;
   },
   now = Date.now(),
-  store: InMemoryRoomStore = roomStore,
+  store: RoomStore = roomStore,
 ) {
-  const room = store.getRoom(code);
+  const room = await store.getRoom(code);
   if (!room) {
     throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+  if (room.phase === "closed") {
+    throw new RoomStoreError("ROOM_CLOSED");
   }
 
   try {
@@ -142,17 +150,20 @@ export function postRoomMessageAction(
   }
 }
 
-export function castRoomVoteAction(
+export async function castRoomVoteAction(
   code: string,
   input: {
     voterSeatId: string;
     targetSeatId: string;
   },
-  store: InMemoryRoomStore = roomStore,
+  store: RoomStore = roomStore,
 ) {
-  const room = store.getRoom(code);
+  const room = await store.getRoom(code);
   if (!room) {
     throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+  if (room.phase === "closed") {
+    throw new RoomStoreError("ROOM_CLOSED");
   }
 
   try {
@@ -165,4 +176,34 @@ export function castRoomVoteAction(
   } catch (error) {
     toActionError(error);
   }
+}
+
+export function closeRoomAction(
+  code: string,
+  store: RoomStore = roomStore,
+) {
+  return store.closeRoom(code);
+}
+
+export function restartRoomAction(
+  code: string,
+  store: RoomStore = roomStore,
+) {
+  return store.restartRoom(code);
+}
+
+export async function leaveRoomAction(
+  code: string,
+  seatId: string,
+  store: RoomStore = roomStore,
+) {
+  const room = await store.getRoom(code);
+  if (!room) {
+    throw new RoomStoreError("ROOM_NOT_FOUND");
+  }
+  if (room.phase === "closed") {
+    throw new RoomStoreError("ROOM_CLOSED");
+  }
+
+  return store.leaveRoom(code, seatId);
 }
